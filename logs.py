@@ -4,11 +4,18 @@ from pathlib import Path
 
 from rich.logging import RichHandler
 
-LOGGER_NAME = Path(__file__).parent.name # Assume the parent directory name is the project name
+LOGGER_NAME = Path(
+    __file__
+).parent.name  # Assume the parent directory name is the project name
+
 
 def setup_logging(level: str = "INFO"):
     rich_handler = RichHandler(
-        rich_tracebacks=True, markup=True, show_time=True, show_level=True, show_path=False
+        rich_tracebacks=True,
+        markup=True,
+        show_time=True,
+        show_level=True,
+        show_path=False,
     )
     rich_handler.setFormatter(StructuredFormatter())
 
@@ -21,8 +28,11 @@ def setup_logging(level: str = "INFO"):
 
     # Configure the root logger to INFO level, and app logger to the level
     # specified in the .env
-    logging.basicConfig(level="INFO", format="%(message)s", datefmt="[%X]", handlers=[rich_handler])
+    logging.basicConfig(
+        level="INFO", format="%(message)s", datefmt="[%X]", handlers=[rich_handler]
+    )
     logging.getLogger(LOGGER_NAME).setLevel(level)
+
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -87,11 +97,15 @@ class StructuredFormatter(logging.Formatter):
 
                 # Handle complex values like dicts
                 if isinstance(value_any, dict):
-                    if len(value_any) <= 3:  # Small dicts inline  # type: ignore[arg-type]
+                    if (
+                        len(value_any) <= 3
+                    ):  # Small dicts inline  # type: ignore[arg-type]
                         value_str = str(value_any)  # type: ignore[arg-type]
                     else:  # Large dicts formatted
                         dict_items = [f"{k}={v}" for k, v in value_any.items()]  # type: ignore[misc]
-                        value_str = "{\n      " + ",\n      ".join(dict_items) + "\n    }"
+                        value_str = (
+                            "{\n      " + ",\n      ".join(dict_items) + "\n    }"
+                        )
                 elif isinstance(value_any, (list, tuple)) and len(value_any) > 3:  # type: ignore[arg-type]
                     # Format long lists/tuples nicely
                     items = [str(item) for item in value_any]  # type: ignore[misc]
