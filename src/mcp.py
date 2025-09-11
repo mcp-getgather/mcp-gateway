@@ -12,8 +12,8 @@ from src.settings import settings
 # TODO: move the hosts mapping to a database
 # map github [username]@github to mcp host, example:
 # MCP_HOSTS = {
-#     # "bin-ario@github": "http://127.0.0.1:23456",  # for local 
-#     "bin-ario@github": "http://host.docker.internal:23456",  # for docker 
+#     # "bin-ario@github": "http://127.0.0.1:23456",  # for local
+#     "bin-ario@github": "http://host.docker.internal:23456",  # for docker
 # }
 MCP_HOSTS = {
     f"{name}@github": f"http://mcp-{name}.flycast"

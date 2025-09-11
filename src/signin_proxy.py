@@ -49,7 +49,7 @@ class SigninProxyMiddleware(BaseHTTPMiddleware):
         All signin paths end with a generated id in the format of [link_id]_[gateway_session_id].
         We can extract the gateway_session_id and localte the server host from the session manager.
         """
-        if any(path.startswith(p) for p in STATIC_PATHS):  
+        if any(path.startswith(p) for p in STATIC_PATHS):
             return session_manager.pick_random()
 
         code = path.rstrip("/").split("/")[-1]

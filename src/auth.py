@@ -13,6 +13,7 @@ from starlette.types import Receive, Scope, Send
 
 from src.settings import settings
 
+
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
     """Custom RequireAuthMiddleware to require authentication for MCP routes"""
 
