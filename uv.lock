@@ -103,6 +103,10 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "rich" },
     { name = "rich-logging" },
+]
+
+[package.dev-dependencies]
+dev = [
     { name = "ruff" },
     { name = "ty" },
 ]
@@ -112,6 +116,10 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.10.1" },
     { name = "rich", specifier = ">=12.5.1" },
     { name = "rich-logging", specifier = ">=0.0.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "ruff", specifier = ">=0.13.0" },
     { name = "ty", specifier = ">=0.0.1a20" },
 ]

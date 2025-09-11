@@ -8,6 +8,41 @@ dependencies = [
     "pydantic-settings>=2.10.1",
     "rich>=12.5.1",
     "rich-logging>=0.0.1",
+]
+
+[dependency-groups]
+dev = [
     "ruff>=0.13.0",
     "ty>=0.0.1a20",
 ]
+
+[tool.ruff]
+src = ["getgather", "tests"]
+exclude = [
+  "**/__pycache__",
+  "**/.pytest_cache",
+  "**/.venv",
+  "**/venv",
+  "**/htmlcov",
+  "**/alembic/versions",
+  "**/node_modules",
+  "**/*env/*",
+  "**/.git",
+  "**/*.yaml",
+  "**/*.yml",
+]
+line-length = 100
+preview = true
+
+[tool.ruff.lint]
+select = ["I", "UP045", "UP006", "UP007"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["src"]
+
+[tool.yamlfix]
+exclude = ["**/.venv/**"]
+explicit_start = false
+line_length = 120
+whitelines = 1
