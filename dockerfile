@@ -1,3 +1,4 @@
+# Stage 1: Build the application
 FROM mirror.gcr.io/library/python:3.13-slim-bookworm AS builder
 
 WORKDIR /app
@@ -20,15 +21,22 @@ ENV PYTHONUNBUFFERED=1 \
 
 # Copy only dependency files first for better layer caching
 COPY pyproject.toml uv.lock* ./
+COPY src /app/src
 
-# Install dependencies
 RUN uv sync --frozen --no-dev
 
+# Stage 2: Final image
 FROM mirror.gcr.io/library/python:3.13-slim-bookworm
+
 WORKDIR /app
-COPY --from=builder /app/.venv /app/.venv
+
+COPY --from=builder /app/.venv /opt/venv
+COPY --from=builder /app/src /app/src
+
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1
 
-# TODO copy application files, expose port(s), run application, etc.
+EXPOSE 9000
+
+CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "9000", "--proxy-headers", "--forwarded-allow-ips", "*"]
