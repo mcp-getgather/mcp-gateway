@@ -29,7 +29,7 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
     github_auth_provider = GitHubProvider(
         client_id=settings.OAUTH_GITHUB_CLIENT_ID,
         client_secret=settings.OAUTH_GITHUB_CLIENT_SECRET,
-        base_url=settings.SERVER_ORIGIN,
+        base_url=settings.GATEWAY_ORIGIN,
         redirect_path=settings.OAUTH_GITHUB_REDIRECT_PATH,
         required_scopes=["user"],
     )

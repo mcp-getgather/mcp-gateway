@@ -5,28 +5,29 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.logs import logger
-from src.session import session_manager
+from src.server_manager import ServerManager
+from src.settings import settings
 
 TIMEOUT = 30.0
-SIGNIN_PATHS = ["/link", "/api"]
+HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link"]
 STATIC_PATHS = ["/__assets", "/__static"]
 
 
-class SigninProxyMiddleware(BaseHTTPMiddleware):
+class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]):
         path = request.url.path
-        if any(path.startswith(p) for p in SIGNIN_PATHS + STATIC_PATHS):
+        if any(path.startswith(p) for p in HOSTED_LINK_PATHS + STATIC_PATHS):
             try:
-                downstream_base_url = self._get_downstream_host(path)
+                server_host = self._get_server_host(path)
             except Exception as e:
                 logger.error(f"Invalid url: {path}, error: {e}", exc_info=True)
                 return Response(status_code=400, content="Invalid url")
-            return await self._proxy_request(request, downstream_base_url)
+            return await self._proxy_request(request, server_host)
         else:
             return await call_next(request)
 
-    async def _proxy_request(self, request: Request, downstream_base_url: str) -> Response:
-        url = f"{downstream_base_url}{request.url.path}"
+    async def _proxy_request(self, request: Request, server_host: str) -> Response:
+        url = f"http://{server_host}{request.url.path}"
         if request.url.query:
             url += f"?{request.url.query}"
 
@@ -44,14 +45,16 @@ class SigninProxyMiddleware(BaseHTTPMiddleware):
             headers=dict(response.headers),
         )
 
-    def _get_downstream_host(self, path: str) -> str:
-        """
-        All signin paths end with a generated id in the format of [link_id]_[gateway_session_id].
-        We can extract the gateway_session_id and localte the server host from the session manager.
-        """
+    def _get_server_host(self, path: str) -> str:
+        """All hosted link paths end with a link_id in the format of [server_name]-[link_id]."""
         if any(path.startswith(p) for p in STATIC_PATHS):
-            return session_manager.pick_random()
+            return ServerManager.get_random_server()
 
-        code = path.rstrip("/").split("/")[-1]
-        _, session_id = code.split("-")
-        return session_manager.get(session_id)
+        link_id = path.rstrip("/").split("/")[-1]
+        parts = link_id.split("-")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid link id: {link_id}")
+
+        host_name = parts[0]
+        server_host = ServerManager.get_server_from_name(host_name)
+        return server_host
