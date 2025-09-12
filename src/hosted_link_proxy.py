@@ -46,15 +46,15 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
         )
 
     def _get_server_host(self, path: str) -> str:
-        """All hosted link paths end with a link_id in the format of [server_name]-[link_id]."""
+        """All hosted link paths end with a link_id in the format of [server_name]-[id]."""
         if any(path.startswith(p) for p in STATIC_PATHS):
             return ServerManager.get_random_server()
 
         link_id = path.rstrip("/").split("/")[-1]
         parts = link_id.split("-")
-        if len(parts) != 2:
+        if len(parts) < 2:
             raise ValueError(f"Invalid link id: {link_id}")
 
-        host_name = parts[0]
+        host_name = "-".join(parts[:-1])
         server_host = ServerManager.get_server_from_name(host_name)
         return server_host
