@@ -20,7 +20,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 
 # Copy only dependency files first for better layer caching
-COPY pyproject.toml uv.lock* ./
+COPY pyproject.toml uv.lock* /app
 COPY src /app/src
 
 RUN uv sync --frozen --no-dev
@@ -33,7 +33,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /opt/venv
 COPY --from=builder /app/src /app/src
 
-ENV PATH="/app/.venv/bin:${PATH}" \
+ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1
 
