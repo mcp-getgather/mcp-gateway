@@ -7,16 +7,6 @@ from pydantic import BaseModel, Field
 
 from src.settings import PROJECT_DIR, settings
 
-# map github [username]@github to mcp server origin, example:
-# SERVERS = {
-#     "bin-ario@github": "localhost:23456",  # for local
-#     # "bin-ario@github": "host.docker.internal:23456",  # for docker
-# }
-# SERVERS = {
-#     f"{name}@github": f"mcp-{name}.flycast"
-#     for name in ["bin-ario", "yuxicreate", "ariya", "kpprasa", "scoutcallens"]
-# }
-
 
 class UserServer(BaseModel):
     user_login: str  # [github username]@github
