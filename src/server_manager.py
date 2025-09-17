@@ -1,4 +1,3 @@
-import contextvars
 import random
 from functools import cached_property
 from string import Template
@@ -13,9 +12,6 @@ class UserServer(BaseModel):
     server_host: str
 
 
-SERVER_CONFIG = contextvars.ContextVar("SERVER_CONFIG")
-
-
 class ServerConfig(BaseModel):
     server_list: list[UserServer] = Field(default_factory=list)
 
@@ -25,13 +21,17 @@ class ServerConfig(BaseModel):
 
     @classmethod
     def load(cls):
+        global _SERVER_CONFIG
         with open(PROJECT_DIR / settings.SERVER_CONFIG_PATH, "r") as f:
-            SERVER_CONFIG.set(ServerConfig.model_validate_json(f.read()))
-        return cls.get()
+            _SERVER_CONFIG = ServerConfig.model_validate_json(f.read())
+        return _SERVER_CONFIG
 
     @classmethod
     def get(cls):
-        return SERVER_CONFIG.get()
+        return _SERVER_CONFIG
+
+
+_SERVER_CONFIG: "ServerConfig" = ServerConfig()
 
 
 # TODO: use a database to manage the server mapping
