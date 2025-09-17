@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
     OAUTH_GITHUB_REDIRECT_PATH: str = "/auth/github/callback"
 
+    SERVER_CONFIG_PATH: str = "data/servers.json"
+
     @property
     def auth_provider(self) -> str:
         """Only supports GitHub for now."""
