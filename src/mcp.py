@@ -20,7 +20,7 @@ MCP_ROUTES = [
 def _create_client_factory(path: str):
     def _create_client():
         user = get_auth_user()
-        server_host = ServerManager.get_server(user.login)
+        server_host = ServerManager.get_or_create_server(user.login)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
         logger.info(f"Proxy user requests for {user.login} to {server_host}{path}")
