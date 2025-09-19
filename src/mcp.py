@@ -31,6 +31,7 @@ def _create_client_factory(path: str):
                     "x-forwarded-proto": gatewway_origin.scheme,
                     "x-forwarded-host": gatewway_origin.netloc,
                 },
+                sse_read_timeout=settings.PROXY_READ_TIMEOUT,
             )
         )
 

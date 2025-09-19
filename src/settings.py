@@ -20,6 +20,9 @@ class Settings(BaseSettings):
 
     SERVER_CONFIG_PATH: str = "data/servers.json"
 
+    PROXY_TIMEOUT: float = 10.0  # timeout for general operations
+    PROXY_READ_TIMEOUT: float = 120.0  # long timeout for read operations
+
     @property
     def auth_provider(self) -> str:
         """Only supports GitHub for now."""
