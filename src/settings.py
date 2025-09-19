@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
     OAUTH_GITHUB_REDIRECT_PATH: str = "/auth/github/callback"
 
+    SERVER_CONFIG_PATH: str = "data/servers.json"
+
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 120.0  # long timeout for read operations
 
