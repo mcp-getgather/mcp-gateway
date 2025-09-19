@@ -4,12 +4,12 @@
 
 ### Github OAuth app
 
-Create a Github OAuth app at [Deverloper Settings](https://github.com/settings/developers).
+Create a Github OAuth app at [Developer Settings](https://github.com/settings/developers).
 
 Set the Authorization callback URL to be `[PROTOCOL]//[HOST]/[CALLBACK_PATH]`.
 
 - `PROTOCOL` is `http:` or `https:`. `https:` is required in some cases, e.g., Claude Desktop Connectors.
-- `HOST` is the hostname of your server, including the port.
+- `HOST` is the hostname of your service, including the port.
 - `CALLBACK_PATH` is default to `/auth/github/callback`, see below for more details.
 
 ## Run locally
@@ -31,7 +31,7 @@ OAUTH_GITHUB_CLIENT_SECRET=
 OAUTH_GITHUB_REDIRECT_PATH=/auth/github/callback
 ```
 
-`name` in `SERVER_HOST_TEMPLATE` will be filled as `localhost:23456`, which is the hostname of the local [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) service.
+`name` in `SERVER_HOST_TEMPLATE` will be filled as `localhost:23456` at run time, which is the hostname of the local [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) service.
 
 Run
 
@@ -49,7 +49,7 @@ Make sure Authorization callback URL for your Github OAuth app is `https://[FLY_
 Run `fly secrets set` for the following env variables if they have not been set before
 
 ```
-GATEWAY_ORIGIN=https://mcp-gateway.fly.dev
+GATEWAY_ORIGIN=https://[FLY_APP_NAME].fly.dev
 OAUTH_GITHUB_CLIENT_ID=
 OAUTH_GITHUB_CLIENT_SECRET=
 OAUTH_GITHUB_REDIRECT_PATH=/auth/github/callback
