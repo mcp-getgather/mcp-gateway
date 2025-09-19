@@ -41,6 +41,7 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
             route.endpoint,
             list(route.methods) if route.methods else [],
         )
+        print(f"Added OAuth route: {route.path}")
 
         # handle '/.well-known/oauth-authorization-server/mcp-*' and
         # '/.well-known/oauth-authorization-server/mcp-*'

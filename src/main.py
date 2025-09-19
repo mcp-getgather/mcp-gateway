@@ -25,4 +25,14 @@ setup_mcp_auth(app, list(mcp_apps.keys()))
 for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:6274"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 app.add_middleware(HostedLinkProxyMiddleware)
