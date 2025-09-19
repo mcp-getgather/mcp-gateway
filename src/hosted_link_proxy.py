@@ -8,7 +8,6 @@ from src.logs import logger
 from src.server_manager import ServerManager
 from src.settings import settings
 
-TIMEOUT = 30.0
 HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link"]
 STATIC_PATHS = ["/__assets", "/__static"]
 
@@ -31,7 +30,9 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
         if request.url.query:
             url += f"?{request.url.query}"
 
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.PROXY_TIMEOUT, read=settings.PROXY_READ_TIMEOUT)
+        ) as client:
             response = await client.request(
                 method=request.method,
                 url=url,
