@@ -8,7 +8,7 @@ from src.logs import logger
 from src.server_manager import ServerManager
 from src.settings import settings
 
-HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link"]
+HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link", "/dpage"]
 STATIC_PATHS = ["/__assets", "/__static"]
 
 
