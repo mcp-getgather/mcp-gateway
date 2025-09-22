@@ -1,0 +1,28 @@
+name: getgather
+networks:
+  internal-net: {}
+
+services:
+  gateway:
+    build:
+      context: .
+    env_file: .env
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      internal-net:
+        aliases:
+          - gateway.internal
+
+  proxy:
+    build:
+      context: https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/gather-engineering/proxy-service.git
+    env_file: .env.proxy
+    expose:
+      - "8889"
+    networks:
+      internal-net:
+        aliases:
+          - proxy.internal

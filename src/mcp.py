@@ -14,13 +14,14 @@ MCP_ROUTES = [
     MCPRoute("All", "/mcp"),
     MCPRoute("Books", "/mcp-books"),
     MCPRoute("Food", "/mcp-food"),
+    MCPRoute("Media", "/mcp-media"),
 ]
 
 
 def _create_client_factory(path: str):
-    def _create_client():
+    async def _create_client():
         user = get_auth_user()
-        server_host = ServerManager.get_server(user.login)
+        server_host = await ServerManager.get_user_hostname(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
         logger.info(f"Proxy user requests for {user.login} to {server_host}{path}")

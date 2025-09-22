@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiodocker>=0.24.0",
     "fastapi>=0.116.1",
     "fastmcp>=2.12.2",
     "nanoid>=2.0.0",
@@ -17,8 +18,8 @@ dependencies = [
 dev = [
     "icecream>=2.1.7",
     "ipython>=9.5.0",
+    "pyright>=1.1.405",
     "ruff>=0.13.0",
-    "ty>=0.0.1a20",
 ]
 
 [tool.ruff]

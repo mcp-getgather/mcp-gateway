@@ -6,6 +6,7 @@ from src.auth import setup_mcp_auth
 from src.hosted_link_proxy import HostedLinkProxyMiddleware
 from src.logs import setup_logging
 from src.mcp import get_mcp_apps
+from src.server_manager import ServerManager
 from src.settings import settings
 
 mcp_apps = get_mcp_apps()
@@ -14,6 +15,8 @@ mcp_apps = get_mcp_apps()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.LOG_LEVEL)
+    await ServerManager.backfill_container_pool()
+
     async with AsyncExitStack() as stack:
         for mcp_app in mcp_apps.values():
             await stack.enter_async_context(mcp_app.lifespan(app))
@@ -26,3 +29,17 @@ for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
 
 app.add_middleware(HostedLinkProxyMiddleware)
+
+
+@app.get("/health")
+async def health():
+    return "Ok"
+
+
+@app.post("/test")
+async def test():
+    from src.auth import AuthUser
+
+    user = AuthUser(login="test", auth_provider="github")
+    server_host = await ServerManager.get_user_hostname(user)
+    return server_host
