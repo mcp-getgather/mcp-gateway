@@ -34,12 +34,3 @@ app.add_middleware(HostedLinkProxyMiddleware)
 @app.get("/health")
 async def health():
     return "Ok"
-
-
-@app.post("/test")
-async def test():
-    from src.auth import AuthUser
-
-    user = AuthUser(login="test", auth_provider="github")
-    server_host = await ServerManager.get_user_hostname(user)
-    return server_host
