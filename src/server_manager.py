@@ -44,12 +44,12 @@ class ServerManager:
             if not await cls._user_has_container(user, docker=docker):
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
-        return f"{user.user_name}:23456"
+        return user.user_name
 
     @classmethod
     async def get_unassigned_server_host(cls) -> str:
         container = await cls._get_random_unassigned_container()
-        return f"{container.id}:23456"
+        return container.id[:12]  # docker id short form (12 characters) is used as the hostname
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
@@ -86,12 +86,14 @@ class ServerManager:
             "Image": settings.SERVER_IMAGE,
             "Env": [
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
+                "BROWSER_TIMEOUT=300_000",
                 f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
                 f"BROWSER_HTTP_PROXY_PASSWORD={settings.BROWSER_HTTP_PROXY_PASSWORD}",
                 f"OPENAI_API_KEY={settings.OPENAI_API_KEY}",
                 f"SENTRY_DSN={settings.SERVER_SENTRY_DSN}",
                 f"DATA_DIR={dst_data_dir}",
                 f"HOSTNAME={hostname}",
+                "PORT=80",
             ],
             "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
             "NetworkingConfig": {"EndpointsConfig": {cls._network_name(): {"Aliases": [hostname]}}},

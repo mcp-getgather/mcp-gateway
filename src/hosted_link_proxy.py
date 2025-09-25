@@ -61,5 +61,4 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in STATIC_PATHS):
             return await ServerManager.get_unassigned_server_host()
 
-        server_name = self._get_container_name(path)
-        return f"{server_name}:23456"
+        return self._get_container_name(path)
