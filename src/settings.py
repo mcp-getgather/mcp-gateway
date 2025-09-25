@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
@@ -11,20 +12,57 @@ class Settings(BaseSettings):
     )
     LOG_LEVEL: str = "INFO"
 
+    HOST_DATA_DIR: str = ""
+
     GATEWAY_ORIGIN: str = ""
-    SERVER_HOST_TEMPLATE: str = "$name"
 
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
     OAUTH_GITHUB_REDIRECT_PATH: str = "/auth/github/callback"
 
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
-    PROXY_READ_TIMEOUT: float = 120.0  # long timeout for read operations
+    PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
+
+    DOCKER_PROJECT_NAME: str = ""
+    DOCKER_NETWORK_NAME: str = ""
+
+    BROWSER_HTTP_PROXY: str = ""
+    BROWSER_HTTP_PROXY_PASSWORD: str = ""
+
+    SERVER_IMAGE: str = ""
+    SERVER_SENTRY_DSN: str = ""
+
+    MIN_CONTAINER_POOL_SIZE: int = 2
+
+    OPENAI_API_KEY: str = ""
+
+    @model_validator(mode="after")
+    def validate_settings(self):
+        required = [
+            "HOST_DATA_DIR",
+            "GATEWAY_ORIGIN",
+            "OAUTH_GITHUB_CLIENT_ID",
+            "OAUTH_GITHUB_CLIENT_SECRET",
+            "DOCKER_PROJECT_NAME",
+            "DOCKER_NETWORK_NAME",
+            "SERVER_IMAGE",
+        ]
+        for name in required:
+            if not getattr(self, name):
+                raise ValueError(f"Missing required setting: {name}")
+        return self
 
     @property
     def auth_provider(self) -> str:
         """Only supports GitHub for now."""
         return "github"
+
+    def server_mount_dir(self, server_name: str) -> Path:
+        parent_path = Path(self.HOST_DATA_DIR) / "server_mounts"
+        path = parent_path / server_name
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+        return path
 
 
 settings = Settings()
