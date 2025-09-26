@@ -28,6 +28,8 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
     async def _proxy_request(self, request: Request, server_host: str) -> Response:
+        logger.info(f"Proxy hosted link request {request.url.path} to {server_host}")
+
         url = f"http://{server_host}{request.url.path}"
         if request.url.query:
             url += f"?{request.url.query}"
@@ -48,7 +50,8 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
             headers=dict(response.headers),
         )
 
-    def _get_container_name(self, path: str) -> str:
+    def _get_hostname_from_link(self, path: str) -> str:
+        """All hosted link paths end with a link_id in the format of [HOSTNAME]-[id]."""
         link_id = path.rstrip("/").split("/")[-1]
         parts = link_id.split("-")
         if len(parts) < 2:
@@ -57,8 +60,8 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
         return "-".join(parts[:-1])
 
     async def _get_server_host(self, path: str) -> str:
-        """All hosted link paths end with a link_id in the format of [server_name]-[id]."""
         if any(path.startswith(p) for p in STATIC_PATHS):
             return await ServerManager.get_unassigned_server_host()
 
-        return self._get_container_name(path)
+        # hosted link
+        return ServerManager.full_hostname(self._get_hostname_from_link(path))

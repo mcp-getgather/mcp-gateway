@@ -24,7 +24,7 @@ def _create_client_factory(path: str):
         server_host = await ServerManager.get_user_hostname(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
-        logger.info(f"Proxy user requests for {user.login} to {server_host}{path}")
+        logger.info(f"Proxy mcp requests for {user.login} to {server_host}{path}")
         return ProxyClient[StreamableHttpTransport](
             StreamableHttpTransport(
                 f"http://{server_host}{path}",
