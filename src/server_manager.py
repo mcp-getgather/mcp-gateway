@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from aiodocker import Docker
+from aiodocker.containers import DockerContainer
 from nanoid import generate
 
 from src.auth import AuthUser
@@ -26,7 +27,7 @@ class ServerManager:
       - CONTAINER_NAME: the name of the container, UNASSIGNED-[HOSTNAME] for unassigned containers
           and [USER_NAME]-[HOSTNAME] for assigned containers, where assigned USER_NAME is AuthUser.user_name.
       - USER_HOSTNAME: an alias of network hostname, equals to AuthUser.user_name.
-    - Containers can be reached by all 4 identifiers above on the network.
+    - Containers can be reached by HOSTNAME and USER_HOSTNAME on the network with settings.DOCKER_DOMAIN.
 
     === Lifecyle and Routing ===
     - The pool maintains a list of settings.MIN_SERVER_POOL_SIZE unassigned containers.
@@ -34,7 +35,6 @@ class ServerManager:
     - When an existing user connects
       - via MCP, the request is routed to the container by USER_HOSTNAME (AuthUser.user_name).
       - via hosted link, the request is routed to the container by the link_id, where it encodes HOSTNAME.
-    - For anoymous requests, e.g., assets, the request is routed to a container in the unassigned pool, by CONTAINER_ID.
     """
 
     @classmethod
@@ -44,19 +44,25 @@ class ServerManager:
             if not await cls._user_has_container(user, docker=docker):
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
-        return user.user_name
+        return cls.full_hostname(user.user_name)
 
     @classmethod
     async def get_unassigned_server_host(cls) -> str:
         container = await cls._get_random_unassigned_container()
-        return container.id[:12]  # docker id short form (12 characters) is used as the hostname
+        container_name = cls._container_name(container)
+        hostname = container_name.split("-")[-1]
+        return cls.full_hostname(hostname)
+
+    @classmethod
+    def full_hostname(cls, hostname: str) -> str:
+        return f"{hostname}{settings.DOCKER_DOMAIN}"
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
         async with docker_client(docker) as _docker:
             containers = await cls._get_containers(prefix=UNASSIGNED_USER_NAME, docker=_docker)
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
-            logger.info(f"Backfilling server pool with {num} servers")
+            logger.info(f"Backfill server pool with {num} servers")
             await asyncio.gather(*[cls._create_server(docker=_docker) for _ in range(num)])
 
     @classmethod
@@ -70,7 +76,7 @@ class ServerManager:
         if not containers:
             raise ValueError("No unassigned containers found")
         container = random.choice(containers)
-        logger.info(f"Randomly selected unassigned container {container.id}")
+        logger.info(f"Randomly selected unassigned container {container.id[:12]}")
         return container
 
     @classmethod
@@ -86,7 +92,7 @@ class ServerManager:
             "Image": settings.SERVER_IMAGE,
             "Env": [
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
-                "BROWSER_TIMEOUT=300_000",
+                "BROWSER_TIMEOUT=300000",
                 f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
                 f"BROWSER_HTTP_PROXY_PASSWORD={settings.BROWSER_HTTP_PROXY_PASSWORD}",
                 f"OPENAI_API_KEY={settings.OPENAI_API_KEY}",
@@ -96,14 +102,16 @@ class ServerManager:
                 "PORT=80",
             ],
             "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
-            "NetworkingConfig": {"EndpointsConfig": {cls._network_name(): {"Aliases": [hostname]}}},
+            "NetworkingConfig": {
+                "EndpointsConfig": {cls._network_name(): {"Aliases": [cls.full_hostname(hostname)]}}
+            },
         }
 
         async with docker_client(docker) as docker:
             container = await docker.containers.run(  # type: ignore[reportUnknownMemberType]
                 config, name=f"{UNASSIGNED_USER_NAME}-{hostname}"
             )
-            logger.info(f"Created server hostname: {hostname}, id: {container.id}")
+            logger.info(f"Created server hostname: {hostname}, id: {container.id[:12]}")
         return hostname
 
     @classmethod
@@ -111,7 +119,7 @@ class ServerManager:
         async with docker_client(docker) as docker:
             # rename the container to [AuthUser.user_name]-[HOSTNAME]
             container = await cls._get_random_unassigned_container(docker)
-            unassigned_container_name: str = container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
+            unassigned_container_name: str = cls._container_name(container)
             hostname = unassigned_container_name.removeprefix(f"{UNASSIGNED_USER_NAME}-")
             assigned_container_name = f"{user.user_name}-{hostname}"
             await container.rename(assigned_container_name)  # type: ignore[reportUnknownMemberType]
@@ -121,7 +129,9 @@ class ServerManager:
             await network.disconnect({"Container": container.id})
             await network.connect({  # type: ignore[reportUnknownMemberType]
                 "Container": container.id,
-                "EndpointConfig": {"Aliases": [hostname, user.user_name]},
+                "EndpointConfig": {
+                    "Aliases": [cls.full_hostname(hostname), cls.full_hostname(user.user_name)]
+                },
             })
             logger.info(f"Assigned container {container.id} to {user.user_name}")
 
@@ -135,6 +145,10 @@ class ServerManager:
                 filters={"ancestor": [settings.SERVER_IMAGE], "name": [prefix]}
             )
         return containers
+
+    @classmethod
+    def _container_name(cls, container: DockerContainer) -> str:
+        return container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
 
     @classmethod
     def _network_name(cls):

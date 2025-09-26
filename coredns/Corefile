@@ -1,0 +1,14 @@
+# domain name should be consistent with DOCKER_DOMAIN in .env file
+docker {
+    # Forward .docker domain queries to Docker's embedded DNS
+    forward . 127.0.0.11:53
+    log
+    errors
+}
+
+.:53 {
+    # Forward all other queries to external DNS
+    forward . 8.8.8.8 1.1.1.1
+    log
+    errors
+}
