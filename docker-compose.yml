@@ -1,0 +1,45 @@
+name: ${DOCKER_PROJECT_NAME}
+
+networks:
+  internal-net: # keep consistent with DOCKER_NETWORK_NAME in .env
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-subnet-router
+    hostname: docker-router
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true # Required for Docker Desktop on Mac
+      - TS_ROUTES=172.20.0.0/24 # Advertise the Docker subnet
+      - TS_ACCEPT_DNS=true
+    volumes:
+      - ./data/tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      internal-net:
+        ipv4_address: 172.20.0.2
+    restart: unless-stopped
+
+  coredns:
+    image: coredns/coredns:latest
+    container_name: coredns
+    command: -conf /etc/coredns/Corefile
+    expose:
+      - "53/udp"
+      - "53/tcp"
+    volumes:
+      - ./coredns:/etc/coredns
+    networks:
+      internal-net:
+        ipv4_address: 172.20.0.3
+    restart: unless-stopped

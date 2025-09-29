@@ -1,0 +1,17 @@
+{
+  "include": ["src"],
+  "reportGeneralTypeIssues": "error",
+  "reportMissingImports": "error",
+  "reportMissingModuleSource": "error",
+  "reportMissingTypeStubs": false,
+  "reportOptionalMemberAccess": "error",
+  "reportOptionalSubscript": "warning",
+  "reportSelfClsParameterName": "error",
+  "reportUnboundVariable": "warning",
+  "reportUndefinedVariable": "error",
+  "reportUninitializedInstanceVariable": "error",
+  "reportUntypedClassDecorator": "error",
+  "reportUnusedImport": "error",
+  "reportUnusedVariable": "error",
+  "typeCheckingMode": "strict"
+}

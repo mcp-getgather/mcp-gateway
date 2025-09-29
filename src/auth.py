@@ -70,9 +70,14 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
 
 
 class AuthUser(BaseModel):
-    sub: str
     login: str
     email: str | None = None
+    auth_provider: str = settings.auth_provider  # only supports GitHub for now
+
+    @property
+    def user_name(self) -> str:
+        """Unique user name combining login and auth provider"""
+        return f"{self.login}.{self.auth_provider}"
 
 
 def get_auth_user() -> AuthUser:
@@ -80,14 +85,9 @@ def get_auth_user() -> AuthUser:
     if not token:
         raise RuntimeError("No auth user found")
 
-    sub = token.claims.get("sub")
     login = token.claims.get("login")
     email = token.claims.get("email")
-    if not sub or not login:
-        raise RuntimeError("No sub or login found in auth token")
+    if not login:
+        raise RuntimeError("No login found in auth token")
 
-    # make sure the sub and login are unique among auth providers
-    sub = f"{sub}@{settings.auth_provider}"
-    login = f"{login}@{settings.auth_provider}"
-
-    return AuthUser(sub=sub, login=login, email=email)
+    return AuthUser(login=login, email=email)
