@@ -34,6 +34,9 @@ services:
     image: coredns/coredns:latest
     container_name: coredns
     command: -conf /etc/coredns/Corefile
+    expose:
+      - "53/udp"
+      - "53/tcp"
     volumes:
       - ./coredns:/etc/coredns
     networks:
