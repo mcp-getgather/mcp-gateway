@@ -1,5 +1,13 @@
 name: ${DOCKER_PROJECT_NAME}
 
+networks:
+  internal-net: # keep consistent with DOCKER_NETWORK_NAME in .env
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+
 services:
   tailscale:
     image: tailscale/tailscale:latest
@@ -26,20 +34,9 @@ services:
     image: coredns/coredns:latest
     container_name: coredns
     command: -conf /etc/coredns/Corefile
-    ports:
-      - "1053:53/udp" # Expose on port 1053 to avoid conflicts
-      - "1053:53/tcp"
     volumes:
       - ./coredns:/etc/coredns
     networks:
       internal-net:
-        ipv4_address: 172.20.0.5
+        ipv4_address: 172.20.0.3
     restart: unless-stopped
-
-networks:
-  internal-net: # keep consistent with DOCKER_NETWORK_NAME in .env
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
-          gateway: 172.20.0.1
