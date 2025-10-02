@@ -15,7 +15,7 @@ mcp_apps = get_mcp_apps()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.LOG_LEVEL)
-    await ServerManager.backfill_container_pool()
+    await ServerManager.reload_container()
 
     async with AsyncExitStack() as stack:
         for mcp_app in mcp_apps.values():
