@@ -92,7 +92,7 @@ class ServerManager:
         async with docker_client() as docker:
             if not await cls._user_has_container(user, docker=docker):
                 await cls._assign_container(user, docker=docker)
-                await cls.backfill_container_pool(num=1, docker=docker)
+                await cls.backfill_container_pool(docker=docker)
         return cls.external_hostname(user.user_name)
 
     @classmethod
@@ -112,19 +112,18 @@ class ServerManager:
         async with docker_client() as docker:
             await asyncio.gather(
                 *[cls._create_container(mount_dir=item, docker=docker) for item in mount_dirs],
-                cls.backfill_container_pool(
-                    num=settings.MIN_CONTAINER_POOL_SIZE - len(mount_dirs), docker=docker
-                ),
             )
+            await cls.backfill_container_pool(docker=docker)
 
         logger.info(f"Reloaded {len(mount_dirs)} containers")
 
     @classmethod
-    async def backfill_container_pool(cls, *, num: int | None = None, docker: Docker | None = None):
+    async def backfill_container_pool(cls, *, docker: Docker | None = None):
         async with docker_client(docker) as _docker:
-            if num is None:
-                containers = await cls._get_containers(prefix=UNASSIGNED_USER_NAME, docker=_docker)
-                num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
+            containers = await cls._get_containers(prefix=UNASSIGNED_USER_NAME, docker=_docker)
+            num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
+            if num <= 0:
+                return
             logger.info(f"Backfill server pool with {num} servers")
             await asyncio.gather(*[cls._create_container(docker=_docker) for _ in range(num)])
 
