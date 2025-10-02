@@ -64,4 +64,4 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
             return await ServerManager.get_unassigned_server_host()
 
         # hosted link
-        return ServerManager.full_hostname(self._get_hostname_from_link(path))
+        return ServerManager.external_hostname(self._get_hostname_from_link(path))
