@@ -40,6 +40,10 @@ class Container:
         container_name = self.container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
         return container_name.split("-")[-1]
 
+    @classmethod
+    def name_for_user(cls, user: AuthUser | None, hostname: str) -> str:
+        return f"{user.user_name if user else UNASSIGNED_USER_NAME}-{hostname}"
+
     @property
     def mount_dir(self) -> Path:
         return self.mount_dir_for_hostname(self.hostname)
@@ -154,13 +158,13 @@ class ServerManager:
         if mount_dir is None:
             # TODO: ensure the hostname is unique
             hostname = generate(FRIENDLY_CHARS, 6)
-            user_hostname = None
+            user = None
         else:
             hostname = mount_dir.stem
             metadata = await cls._read_metadata(hostname)
-            user_hostname = metadata.user.user_name if metadata else None
+            user = metadata.user if metadata else None
 
-        container_name = f"{user_hostname or UNASSIGNED_USER_NAME}-{hostname}"
+        container_name = Container.name_for_user(user, hostname)
         containers = await cls._get_containers(prefix=container_name, docker=docker)
         if containers:
             logger.info(f"Container {container_name} already exists")
@@ -169,8 +173,8 @@ class ServerManager:
         src_data_dir = str(Container.mount_dir_for_hostname(hostname))
         dst_data_dir = "/app/data"
         network_aliases = [cls.external_hostname(hostname)]
-        if user_hostname:
-            network_aliases.append(cls.external_hostname(user_hostname))
+        if user:
+            network_aliases.append(cls.external_hostname(user.user_name))
 
         config: dict[str, Any] = {
             "Image": settings.SERVER_IMAGE,
