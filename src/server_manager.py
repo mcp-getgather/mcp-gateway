@@ -102,7 +102,7 @@ class ServerManager:
         return f"{hostname}{settings.DOCKER_DOMAIN}"
 
     @classmethod
-    async def reload_container(cls):
+    async def reload_containers(cls):
         # List all directories in the server mount directory
         mount_dirs = [item for item in settings.server_mount_parent_dir.iterdir() if item.is_dir()]
         async with docker_client() as docker:
