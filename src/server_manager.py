@@ -175,8 +175,17 @@ class ServerManager:
         if user:
             network_aliases.append(cls.external_hostname(user.user_name))
 
+        # tailscale router is need to access proxy service
+        tailscale_router_ip = f"{settings.DOCKER_SUBNET_PREFIX}.2"
+
         config: dict[str, Any] = {
             "Image": settings.SERVER_IMAGE,
+            "Entrypoint": ["/bin/sh", "-c"],  # override the entrypoint to add tailscale routing
+            "Cmd": [
+                "apt update && apt install -y iproute2 &&"
+                f" ip route add 100.64.0.0/10 via {tailscale_router_ip} &&"
+                " exec /app/entrypoint.sh"
+            ],
             "Env": [
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
@@ -188,7 +197,7 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
+            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"], "CapAdd": ["NET_ADMIN"]},
             "NetworkingConfig": {
                 "EndpointsConfig": {cls._network_name(): {"Aliases": network_aliases}}
             },
