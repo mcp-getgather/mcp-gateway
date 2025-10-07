@@ -103,7 +103,7 @@ class ServerManager:
     @classmethod
     def external_hostname(cls, hostname: str) -> str:
         """Hostname of the container that can be reached from outside of Docker network."""
-        return f"{hostname}{settings.DOCKER_DOMAIN}"
+        return f"{hostname}.{settings.DOCKER_DOMAIN}"
 
     @classmethod
     async def reload_containers(cls):
