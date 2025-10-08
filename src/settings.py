@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
-    OAUTH_GITHUB_REDIRECT_PATH: str = "/auth/github/callback"
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
 
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
@@ -52,11 +53,6 @@ class Settings(BaseSettings):
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
         return self
-
-    @property
-    def auth_provider(self) -> str:
-        """Only supports GitHub for now."""
-        return "github"
 
     def server_mount_dir(self, server_name: str) -> Path:
         parent_path = Path(self.HOST_DATA_DIR) / "server_mounts"
