@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     DOCKER_PROJECT_NAME: str = ""
     DOCKER_NETWORK_NAME: str = ""
+    DOCKER_SUBNET_PREFIX: str = ""
     DOCKER_DOMAIN: str = ""
 
     BROWSER_HTTP_PROXY: str = ""
@@ -58,9 +59,9 @@ class Settings(BaseSettings):
         """Only supports GitHub for now."""
         return "github"
 
-    def server_mount_dir(self, server_name: str) -> Path:
-        parent_path = Path(self.HOST_DATA_DIR) / "server_mounts"
-        path = parent_path / server_name
+    @property
+    def server_mount_parent_dir(self) -> Path:
+        path = Path(self.HOST_DATA_DIR) / "server_mounts"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path

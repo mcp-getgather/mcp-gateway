@@ -1,11 +1,14 @@
 import asyncio
 import random
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
+import aiofiles
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
 from nanoid import generate
+from pydantic import BaseModel
 
 from src.auth import AuthUser
 from src.logs import logger
@@ -13,6 +16,52 @@ from src.settings import settings
 
 UNASSIGNED_USER_NAME = "UNASSIGNED"
 FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
+
+
+class ContainerMetadata(BaseModel):
+    user: AuthUser
+
+
+class Container:
+    """
+    Wrapper around a DockerContainer.
+    Container names are [USER_NAME]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]
+    """
+
+    def __init__(self, container: DockerContainer):
+        self.container = container
+
+    @property
+    def id(self) -> str:
+        return self.container.id[:12]
+
+    @property
+    def hostname(self) -> str:
+        container_name = self.container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
+        return container_name.split("-")[-1]
+
+    @classmethod
+    def name_for_user(cls, user: AuthUser | None, hostname: str) -> str:
+        return f"{user.user_name if user else UNASSIGNED_USER_NAME}-{hostname}"
+
+    @property
+    def mount_dir(self) -> Path:
+        return self.mount_dir_for_hostname(self.hostname)
+
+    @classmethod
+    def mount_dir_for_hostname(cls, hostname: str) -> Path:
+        path = settings.server_mount_parent_dir / hostname
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def metadata_file(self) -> Path:
+        return self.metadata_file_for_hostname(self.hostname)
+
+    @classmethod
+    def metadata_file_for_hostname(cls, hostname: str) -> Path:
+        return cls.mount_dir_for_hostname(hostname) / "metadata.json"
 
 
 class ServerManager:
@@ -44,26 +93,39 @@ class ServerManager:
             if not await cls._user_has_container(user, docker=docker):
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
-        return cls.full_hostname(user.user_name)
+        return cls.external_hostname(user.user_name)
 
     @classmethod
     async def get_unassigned_server_host(cls) -> str:
         container = await cls._get_random_unassigned_container()
-        container_name = cls._container_name(container)
-        hostname = container_name.split("-")[-1]
-        return cls.full_hostname(hostname)
+        return cls.external_hostname(container.hostname)
 
     @classmethod
-    def full_hostname(cls, hostname: str) -> str:
-        return f"{hostname}{settings.DOCKER_DOMAIN}"
+    def external_hostname(cls, hostname: str) -> str:
+        """Hostname of the container that can be reached from outside of Docker network."""
+        return f"{hostname}.{settings.DOCKER_DOMAIN}"
+
+    @classmethod
+    async def reload_containers(cls):
+        # List all directories in the server mount directory
+        mount_dirs = [item for item in settings.server_mount_parent_dir.iterdir() if item.is_dir()]
+        async with docker_client() as docker:
+            await asyncio.gather(
+                *[cls._create_container(mount_dir=item, docker=docker) for item in mount_dirs],
+            )
+            await cls.backfill_container_pool(docker=docker)
+
+        logger.info(f"Reloaded {len(mount_dirs)} containers")
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
         async with docker_client(docker) as _docker:
             containers = await cls._get_containers(prefix=UNASSIGNED_USER_NAME, docker=_docker)
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
+            if num <= 0:
+                return
             logger.info(f"Backfill server pool with {num} servers")
-            await asyncio.gather(*[cls._create_server(docker=_docker) for _ in range(num)])
+            await asyncio.gather(*[cls._create_container(docker=_docker) for _ in range(num)])
 
     @classmethod
     async def _user_has_container(cls, user: AuthUser, *, docker: Docker | None = None) -> bool:
@@ -71,25 +133,59 @@ class ServerManager:
         return len(containers) != 0
 
     @classmethod
+    async def _get_containers(cls, *, prefix: str, docker: Docker | None = None):
+        async with docker_client(docker) as docker:
+            containers = await docker.containers.list(  # type: ignore[reportUnknownMemberType]
+                filters={"ancestor": [settings.SERVER_IMAGE], "name": [prefix]}
+            )
+        return [Container(container) for container in containers]
+
+    @classmethod
     async def _get_random_unassigned_container(cls, docker: Docker | None = None):
         containers = await cls._get_containers(prefix=UNASSIGNED_USER_NAME, docker=docker)
         if not containers:
             raise ValueError("No unassigned containers found")
         container = random.choice(containers)
-        logger.info(f"Randomly selected unassigned container {container.id[:12]}")
+        logger.info(f"Randomly selected unassigned container {container.id}")
         return container
 
     @classmethod
-    async def _create_server(cls, *, docker: Docker | None = None):
-        # TODO: ensure the hostname is unique
-        hostname = generate(FRIENDLY_CHARS, 6)
+    async def _create_container(
+        cls, *, mount_dir: Path | None = None, docker: Docker | None = None
+    ):
+        """Create a fresh container for UNASSIGNED user or load from a mount_dir for an existing user."""
+        if mount_dir is None:
+            # TODO: ensure the hostname is unique
+            hostname = generate(FRIENDLY_CHARS, 6)
+            user = None
+        else:
+            hostname = mount_dir.stem
+            metadata = await cls._read_metadata(hostname)
+            user = metadata.user if metadata else None
 
-        # TODO: reuse the data dir when the container is recreated
-        src_data_dir = str(settings.server_mount_dir(hostname))
+        container_name = Container.name_for_user(user, hostname)
+        containers = await cls._get_containers(prefix=container_name, docker=docker)
+        if containers:
+            logger.info(f"Container {container_name} already exists")
+            return hostname
+
+        src_data_dir = str(Container.mount_dir_for_hostname(hostname))
         dst_data_dir = "/app/data"
+        network_aliases = [cls.external_hostname(hostname)]
+        if user:
+            network_aliases.append(cls.external_hostname(user.user_name))
+
+        # tailscale router is need to access proxy service
+        tailscale_router_ip = f"{settings.DOCKER_SUBNET_PREFIX}.2"
 
         config: dict[str, Any] = {
             "Image": settings.SERVER_IMAGE,
+            "Entrypoint": ["/bin/sh", "-c"],  # override the entrypoint to add tailscale routing
+            "Cmd": [
+                "apt update && apt install -y iproute2 &&"
+                f" ip route add 100.64.0.0/10 via {tailscale_router_ip} &&"
+                " exec /app/entrypoint.sh"
+            ],
             "Env": [
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
@@ -101,15 +197,15 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
+            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"], "CapAdd": ["NET_ADMIN"]},
             "NetworkingConfig": {
-                "EndpointsConfig": {cls._network_name(): {"Aliases": [cls.full_hostname(hostname)]}}
+                "EndpointsConfig": {cls._network_name(): {"Aliases": network_aliases}}
             },
         }
 
         async with docker_client(docker) as docker:
             container = await docker.containers.run(  # type: ignore[reportUnknownMemberType]
-                config, name=f"{UNASSIGNED_USER_NAME}-{hostname}"
+                config, name=container_name
             )
             logger.info(f"Created server hostname: {hostname}, id: {container.id[:12]}")
         return hostname
@@ -119,10 +215,10 @@ class ServerManager:
         async with docker_client(docker) as docker:
             # rename the container to [AuthUser.user_name]-[HOSTNAME]
             container = await cls._get_random_unassigned_container(docker)
-            unassigned_container_name: str = cls._container_name(container)
-            hostname = unassigned_container_name.removeprefix(f"{UNASSIGNED_USER_NAME}-")
-            assigned_container_name = f"{user.user_name}-{hostname}"
-            await container.rename(assigned_container_name)  # type: ignore[reportUnknownMemberType]
+            assigned_container_name = f"{user.user_name}-{container.hostname}"
+            await container.container.rename(assigned_container_name)  # type: ignore[reportUnknownMemberType]
+
+            await cls._write_metadata(container, user)
 
             # add HOSTNAME and USER_HOSTNAME (AuthUser.user_name) to the container network aliases
             network = await docker.networks.get(cls._network_name())
@@ -130,7 +226,10 @@ class ServerManager:
             await network.connect({  # type: ignore[reportUnknownMemberType]
                 "Container": container.id,
                 "EndpointConfig": {
-                    "Aliases": [cls.full_hostname(hostname), cls.full_hostname(user.user_name)]
+                    "Aliases": [
+                        cls.external_hostname(container.hostname),
+                        cls.external_hostname(user.user_name),
+                    ]
                 },
             })
             logger.info(f"Assigned container {container.id} to {user.user_name}")
@@ -138,17 +237,20 @@ class ServerManager:
         return user.user_name
 
     @classmethod
-    async def _get_containers(cls, *, prefix: str, docker: Docker | None = None):
-        """Container names are [USER_NAME]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]"""
-        async with docker_client(docker) as docker:
-            containers = await docker.containers.list(  # type: ignore[reportUnknownMemberType]
-                filters={"ancestor": [settings.SERVER_IMAGE], "name": [prefix]}
-            )
-        return containers
+    async def _write_metadata(cls, container: Container, user: AuthUser):
+        metadata = ContainerMetadata(user=user)
+        async with aiofiles.open(container.metadata_file, "w") as f:
+            await f.write(metadata.model_dump_json())
 
     @classmethod
-    def _container_name(cls, container: DockerContainer) -> str:
-        return container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
+    async def _read_metadata(cls, hostname: str) -> ContainerMetadata | None:
+        path = Container.metadata_file_for_hostname(hostname)
+        if not path.exists():
+            return None  # ignore unassigned container
+
+        async with aiofiles.open(path, "r") as f:
+            metadata = ContainerMetadata.model_validate_json(await f.read())
+        return metadata
 
     @classmethod
     def _network_name(cls):
