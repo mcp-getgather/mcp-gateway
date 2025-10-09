@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     HOST_DATA_DIR: str = ""
 
+    ADMIN_API_TOKEN: str = ""
     GATEWAY_ORIGIN: str = ""
 
     OAUTH_GITHUB_CLIENT_ID: str = ""
