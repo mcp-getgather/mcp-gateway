@@ -15,7 +15,7 @@ mcp_apps = get_mcp_apps()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(level=settings.LOG_LEVEL, sentry_dsn=settings.GATEWAY_SENTRY_DSN)
-    # await ServerManager.reload_containers()
+    await ServerManager.reload_containers()
 
     async with AsyncExitStack() as stack:
         for mcp_app in mcp_apps.values():
