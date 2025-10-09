@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     HOST_DATA_DIR: str = ""
 
     GATEWAY_ORIGIN: str = ""
+    GATEWAY_SENTRY_DSN: str = ""
 
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
