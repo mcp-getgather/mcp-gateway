@@ -46,7 +46,6 @@ def setup_logging(*, level: str = "INFO", sentry_dsn: str | None = None):
             ],
             send_default_pii=True,
         )
-        logger.info("Sentry initialized successfully")
     else:
         logger.warning("No GATEWAY_SENTRY_DSN provided, Sentry is disabled")
 
