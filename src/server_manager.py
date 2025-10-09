@@ -108,7 +108,7 @@ class ServerManager:
     @classmethod
     async def reload_containers(cls):
         # List all directories in the server mount directory
-        mount_dirs = [item for item in settings.server_mount_parent_dir.iterdir() if item.is_dir()]
+        mount_dirs = cls._get_mount_dirs()
         async with docker_client() as docker:
             await asyncio.gather(
                 *[cls._create_container(mount_dir=item, docker=docker) for item in mount_dirs],
@@ -150,13 +150,25 @@ class ServerManager:
         return container
 
     @classmethod
+    def _get_mount_dirs(cls):
+        return [item for item in settings.server_mount_parent_dir.iterdir() if item.is_dir()]
+
+    @classmethod
+    def _generate_container_name(cls) -> str:
+        """Generate a random name until it is not in the existing names."""
+        mount_dirs = cls._get_mount_dirs()
+        existing_names = set(item.stem for item in mount_dirs)
+        while (name := generate(FRIENDLY_CHARS, 6)) in existing_names:
+            continue
+        return name
+
+    @classmethod
     async def _create_container(
         cls, *, mount_dir: Path | None = None, docker: Docker | None = None
     ):
         """Create a fresh container for UNASSIGNED user or load from a mount_dir for an existing user."""
         if mount_dir is None:
-            # TODO: ensure the hostname is unique
-            hostname = generate(FRIENDLY_CHARS, 6)
+            hostname = cls._generate_container_name()
             user = None
         else:
             hostname = mount_dir.stem
