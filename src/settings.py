@@ -57,7 +57,7 @@ class Settings(BaseSettings):
 
     @property
     def server_mount_parent_dir(self) -> Path:
-        path = Path(self.HOST_DATA_DIR) / "server_mounts"
+        path = Path(self.HOST_DATA_DIR).expanduser() / "server_mounts"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path
