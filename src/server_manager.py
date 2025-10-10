@@ -1,4 +1,5 @@
 import asyncio
+import platform
 import random
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -188,17 +189,8 @@ class ServerManager:
         if user:
             network_aliases.append(cls.external_hostname(user.user_id))
 
-        # tailscale router is needed to access proxy service
-        tailscale_router_ip = f"{settings.DOCKER_SUBNET_PREFIX}.2"
-
         config: dict[str, Any] = {
             "Image": settings.SERVER_IMAGE,
-            "Entrypoint": ["/bin/sh", "-c"],  # override the entrypoint to add tailscale routing
-            "Cmd": [
-                "apt update && apt install -y iproute2 &&"
-                f" ip route add 100.64.0.0/10 via {tailscale_router_ip} &&"
-                " exec /app/entrypoint.sh"
-            ],
             "Env": [
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
@@ -210,11 +202,25 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"], "CapAdd": ["NET_ADMIN"]},
+            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
             "NetworkingConfig": {
                 "EndpointsConfig": {cls._network_name(): {"Aliases": network_aliases}}
             },
         }
+
+        # If host is not macOS, container needs the tailscale router to access proxy service,
+        # so we need to override the entrypoint to install iproute2 and add tailscale routing.
+        # The container also needs NET_ADMIN capabilities
+        if platform.system() != "Darwin":
+            config.update({
+                "Entrypoint": ["/bin/sh", "-c"],
+                "Cmd": [
+                    "apt update && apt install -y iproute2 &&"
+                    f" ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
+                    " exec /app/entrypoint.sh"
+                ],
+            })
+            config["HostConfig"].update({"CapAdd": ["NET_ADMIN"]})
 
         async with docker_client(docker) as docker:
             container = await docker.containers.create_or_replace(container_name, config)
@@ -244,6 +250,21 @@ class ServerManager:
                     ]
                 },
             })
+
+            if platform.system() != "Darwin":
+                exec = await container.container.exec(
+                    [
+                        "ip",
+                        "route",
+                        "add",
+                        "100.64.0.0/10",
+                        "via",
+                        cls._tailscale_router_ip(),
+                    ],
+                    privileged=True,
+                )
+                await exec.start(detach=True)
+
             logger.info(f"Assigned container {container.id} to {user.user_id}")
 
         return user.user_id
@@ -267,6 +288,11 @@ class ServerManager:
     @classmethod
     def _network_name(cls):
         return f"{settings.DOCKER_PROJECT_NAME}_{settings.DOCKER_NETWORK_NAME}"
+
+    @classmethod
+    def _tailscale_router_ip(cls):
+        """IP address of the tailscale router for accessing proxy service."""
+        return f"{settings.DOCKER_SUBNET_PREFIX}.2"
 
     @classmethod
     def _user_server_host(cls, user: AuthUser) -> str:
