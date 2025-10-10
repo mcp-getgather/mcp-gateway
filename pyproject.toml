@@ -12,6 +12,7 @@ dependencies = [
     "nanoid>=2.0.0",
     "pydantic-settings>=2.10.1",
     "rich>=14.1.0",
+    "sentry-sdk[fastapi]>=2.41.0",
     "uvicorn[standard]>=0.35.0",
 ]
 
