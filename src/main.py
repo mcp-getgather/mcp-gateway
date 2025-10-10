@@ -1,6 +1,6 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 
 from src.auth import setup_mcp_auth
 from src.hosted_link_proxy import HostedLinkProxyMiddleware
@@ -14,7 +14,7 @@ mcp_apps = get_mcp_apps()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    setup_logging(settings.LOG_LEVEL)
+    setup_logging(level=settings.LOG_LEVEL, sentry_dsn=settings.GATEWAY_SENTRY_DSN)
     await ServerManager.reload_containers()
 
     async with AsyncExitStack() as stack:
@@ -34,3 +34,11 @@ app.add_middleware(HostedLinkProxyMiddleware)
 @app.get("/health")
 async def health():
     return "Ok"
+
+
+@app.post("/admin/reload")
+async def reload_containers(request: Request):
+    token = request.headers.get("x-admin-token")
+    if not token or token != settings.ADMIN_API_TOKEN:
+        raise HTTPException(status_code=401, detail="Missing or invalid admin token")
+    await ServerManager.reload_containers()
