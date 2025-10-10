@@ -11,6 +11,7 @@ class Settings(BaseSettings):
         env_file=PROJECT_DIR / ".env", env_ignore_empty=True, extra="ignore"
     )
     LOG_LEVEL: str = "INFO"
+    GIT_REV: str = ""
 
     HOST_DATA_DIR: str = ""
 
