@@ -111,7 +111,10 @@ class ServerManager:
         mount_dirs = cls._get_mount_dirs()
         async with docker_client() as docker:
             await asyncio.gather(
-                *[cls._create_container(mount_dir=item, docker=docker) for item in mount_dirs],
+                *[
+                    cls._create_or_replace_container(mount_dir=item, docker=docker)
+                    for item in mount_dirs
+                ],
             )
             await cls.backfill_container_pool(docker=docker)
 
@@ -125,7 +128,9 @@ class ServerManager:
             if num <= 0:
                 return
             logger.info(f"Backfill server pool with {num} servers")
-            await asyncio.gather(*[cls._create_container(docker=_docker) for _ in range(num)])
+            await asyncio.gather(*[
+                cls._create_or_replace_container(docker=_docker) for _ in range(num)
+            ])
 
     @classmethod
     async def _user_has_container(cls, user: AuthUser, *, docker: Docker | None = None) -> bool:
@@ -163,7 +168,7 @@ class ServerManager:
         return name
 
     @classmethod
-    async def _create_container(
+    async def _create_or_replace_container(
         cls, *, mount_dir: Path | None = None, docker: Docker | None = None
     ):
         """Create a fresh container for UNASSIGNED user or load from a mount_dir for an existing user."""
@@ -176,10 +181,6 @@ class ServerManager:
             user = metadata.user if metadata else None
 
         container_name = Container.name_for_user(user, hostname)
-        containers = await cls._get_containers(prefix=container_name, docker=docker)
-        if containers:
-            logger.info(f"Container {container_name} already exists")
-            return hostname
 
         src_data_dir = str(Container.mount_dir_for_hostname(hostname))
         dst_data_dir = "/app/data"
@@ -216,10 +217,9 @@ class ServerManager:
         }
 
         async with docker_client(docker) as docker:
-            container = await docker.containers.run(  # type: ignore[reportUnknownMemberType]
-                config, name=container_name
-            )
-            logger.info(f"Created server hostname: {hostname}, id: {container.id[:12]}")
+            container = await docker.containers.create_or_replace(container_name, config)
+            await container.start()  # type: ignore[reportUnknownMemberType]
+            logger.info(f"Created or reloaded server hostname: {hostname}, id: {container.id[:12]}")
         return hostname
 
     @classmethod
