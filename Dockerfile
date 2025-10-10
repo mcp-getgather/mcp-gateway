@@ -32,6 +32,7 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv /opt/venv
 COPY --from=builder /app/src /app/src
+COPY frontend /app/frontend
 
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
