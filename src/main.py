@@ -1,4 +1,5 @@
 from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -33,7 +34,7 @@ app.add_middleware(HostedLinkProxyMiddleware)
 
 @app.get("/health")
 async def health():
-    return "Ok"
+    return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
 
 
 @app.post("/admin/reload")
