@@ -2,12 +2,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import sentry_sdk
 from rich.logging import RichHandler
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 LOGGER_NAME = Path(__file__).parent.name  # Assume the parent directory name is the project name
 
 
-def setup_logging(level: str = "INFO"):
+def setup_logging(*, level: str = "INFO", sentry_dsn: str | None = None):
     rich_handler = RichHandler(
         rich_tracebacks=True,
         markup=True,
@@ -19,15 +23,31 @@ def setup_logging(level: str = "INFO"):
 
     # reconfigure uvicorn.error, uvicorn.access and fastapi
     for name in ["uvicorn.error", "uvicorn.access", "fastapi"]:
-        logger = logging.getLogger(name)
-        logger.handlers.clear()
-        logger.addHandler(rich_handler)
-        logger.propagate = False
+        _logger = logging.getLogger(name)
+        _logger.handlers.clear()
+        _logger.addHandler(rich_handler)
+        _logger.propagate = False
 
     # Configure the root logger to INFO level, and app logger to the level
     # specified in the .env
     logging.basicConfig(level="INFO", format="%(message)s", datefmt="[%X]", handlers=[rich_handler])
     logging.getLogger(LOGGER_NAME).setLevel(level)
+
+    # setup sentry
+    if sentry_dsn:
+        logger.info("Initializing Sentry")
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            _experiments={"enable_logs": True},
+            integrations=[
+                StarletteIntegration(transaction_style="url"),
+                FastApiIntegration(transaction_style="url"),
+                LoggingIntegration(level=logging.getLevelNamesMapping()[level]),
+            ],
+            send_default_pii=True,
+        )
+    else:
+        logger.warning("No GATEWAY_SENTRY_DSN provided, Sentry is disabled")
 
 
 logger = logging.getLogger(LOGGER_NAME)

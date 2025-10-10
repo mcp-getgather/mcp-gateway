@@ -16,10 +16,12 @@ class Settings(BaseSettings):
 
     ADMIN_API_TOKEN: str = ""
     GATEWAY_ORIGIN: str = ""
+    GATEWAY_SENTRY_DSN: str = ""
 
     OAUTH_GITHUB_CLIENT_ID: str = ""
     OAUTH_GITHUB_CLIENT_SECRET: str = ""
-    OAUTH_GITHUB_REDIRECT_PATH: str = "/auth/github/callback"
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
 
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
@@ -56,13 +58,8 @@ class Settings(BaseSettings):
         return self
 
     @property
-    def auth_provider(self) -> str:
-        """Only supports GitHub for now."""
-        return "github"
-
-    @property
     def server_mount_parent_dir(self) -> Path:
-        path = Path(self.HOST_DATA_DIR) / "server_mounts"
+        path = Path(self.HOST_DATA_DIR).expanduser() / "server_mounts"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path
