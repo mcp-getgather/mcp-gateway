@@ -3,7 +3,7 @@ import platform
 import random
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import aiofiles
 from aiodocker import Docker
@@ -107,19 +107,23 @@ class ServerManager:
         return f"{hostname}.{settings.DOCKER_DOMAIN}"
 
     @classmethod
-    async def reload_containers(cls):
-        # List all directories in the server mount directory
+    async def reload_containers(cls, *, force: bool = False):
         mount_dirs = cls._get_mount_dirs()
         async with docker_client() as docker:
+            if not force:
+                running_containers = await cls._get_containers(docker=docker)
+                running_dirs = set(container.mount_dir for container in running_containers)
+                mount_dirs = [item for item in mount_dirs if item not in running_dirs]
+
             await asyncio.gather(
                 *[
                     cls._create_or_replace_container(mount_dir=item, docker=docker)
                     for item in mount_dirs
                 ],
             )
-            await cls.backfill_container_pool(docker=docker)
+            logger.info(f"Reloaded {len(mount_dirs)} containers")
 
-        logger.info(f"Reloaded {len(mount_dirs)} containers")
+            await cls.backfill_container_pool(docker=docker)
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
@@ -139,11 +143,13 @@ class ServerManager:
         return len(containers) != 0
 
     @classmethod
-    async def _get_containers(cls, *, prefix: str, docker: Docker | None = None):
+    async def _get_containers(cls, *, prefix: str | None = None, docker: Docker | None = None):
+        filters = {"ancestor": [settings.SERVER_IMAGE]}
+        if prefix:
+            filters["name"] = [prefix]
+
         async with docker_client(docker) as docker:
-            containers = await docker.containers.list(  # type: ignore[reportUnknownMemberType]
-                filters={"ancestor": [settings.SERVER_IMAGE], "name": [prefix]}
-            )
+            containers = await docker.containers.list(filters=filters)  # type: ignore[reportUnknownMemberType]
         return [Container(container) for container in containers]
 
     @classmethod
@@ -220,7 +226,7 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            config["HostConfig"].update({"CapAdd": ["NET_ADMIN"]})
+            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
 
         async with docker_client(docker) as docker:
             container = await docker.containers.create_or_replace(container_name, config)
