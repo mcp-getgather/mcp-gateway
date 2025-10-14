@@ -19,7 +19,7 @@ from src.settings import settings
 
 UNASSIGNED_USER_ID = "UNASSIGNED"
 FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
-CONTAINER_STARTUP_TIME = timedelta(minutes=1)
+CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 
 
 class ContainerMetadata(BaseModel):
@@ -109,16 +109,15 @@ class ServerManager:
     @classmethod
     async def get_user_hostname(cls, user: AuthUser) -> str:
         """Get the hostname of the user's container. Assign one if not exists."""
-        async with docker_client(lock="write") as docker:
-            if not await cls._user_has_container(user, docker=docker):
+        if not await cls._user_has_container(user):
+            async with docker_client(lock="write") as docker:
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
         return cls.external_hostname(user.user_id)
 
     @classmethod
     async def get_unassigned_server_host(cls) -> str:
-        async with docker_client(lock="read") as docker:
-            container = await cls._get_random_unassigned_container(docker)
+        container = await cls._get_random_unassigned_container()
         return cls.external_hostname(container.hostname)
 
     @classmethod
@@ -143,7 +142,7 @@ class ServerManager:
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
-        async with docker_client(docker, lock="read") as _docker:
+        async with docker_client(docker, lock="write") as _docker:
             containers = await cls._get_containers(
                 prefix=UNASSIGNED_USER_ID, docker=_docker, only_ready=False
             )
