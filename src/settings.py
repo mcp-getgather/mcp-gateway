@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     SERVER_IMAGE: str = ""
     SERVER_SENTRY_DSN: str = ""
 
-    MIN_CONTAINER_POOL_SIZE: int = 2
+    MIN_CONTAINER_POOL_SIZE: int = 5
 
     OPENAI_API_KEY: str = ""
 

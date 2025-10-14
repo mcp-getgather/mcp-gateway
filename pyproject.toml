@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "aiodocker>=0.24.0",
     "aiofiles>=24.1.0",
+    "aiorwlock>=1.5.0",
     "fastapi>=0.116.1",
     "fastmcp>=2.12.4",
     "nanoid>=2.0.0",
