@@ -53,11 +53,6 @@ class Container:
         started_at = datetime.fromisoformat(state["StartedAt"].rstrip("Z")).replace(
             tzinfo=timezone.utc
         )
-        from icecream import ic
-
-        ic(started_at)
-        ic(datetime.now(timezone.utc))
-        ic(started_at + CONTAINER_STARTUP_TIME)
         return datetime.now(timezone.utc) > started_at + CONTAINER_STARTUP_TIME
 
     @property
