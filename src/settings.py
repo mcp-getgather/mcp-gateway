@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
+FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 
 class Settings(BaseSettings):
