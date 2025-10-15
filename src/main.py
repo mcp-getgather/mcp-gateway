@@ -1,13 +1,14 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
 from src.hosted_link_proxy import HostedLinkProxyMiddleware
 from src.logs import setup_logging
 from src.mcp import get_mcp_apps
 from src.server_manager import ServerManager
-from src.settings import settings
+from src.settings import FRONTEND_DIR, settings
 
 mcp_apps = get_mcp_apps()
 
@@ -29,6 +30,8 @@ for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
 
 app.add_middleware(HostedLinkProxyMiddleware)
+
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
 
 @app.get("/health")
