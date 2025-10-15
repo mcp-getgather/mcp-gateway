@@ -1,9 +1,8 @@
 from typing import cast
 
-import aiofiles
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.requests import Request
-from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastmcp.server.dependencies import get_access_token
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
@@ -13,8 +12,8 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.types import Receive, Scope, Send
 
-from src.multi_oauth_provider import OAUTH_PROVIDER_TYPE, OAUTH_PROVIDERS, MultiOAuthProvider
-from src.settings import PROJECT_DIR
+from src.multi_oauth_provider import OAUTH_PROVIDER_TYPE, MultiOAuthProvider
+from src.settings import FRONTEND_DIR
 
 
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
@@ -65,23 +64,15 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
     for middleware in auth_middleware:
         app.add_middleware(middleware.cls, *middleware.args, **middleware.kwargs)
 
-    @app.get("/auth_options")
-    async def auth_options(request: Request):  # type: ignore[reportUnusedFunction]
+    @app.get("/signin")
+    def auth_options(github_url: str, google_url: str, request: Request):  # type: ignore[reportUnusedFunction]
         """Page to allow user to select the authentication provider."""
-        async with aiofiles.open(PROJECT_DIR / "frontend" / "auth_options.html") as f:
-            html = await f.read()
-
-        for provider in OAUTH_PROVIDERS:
-            name = f"{provider.upper()}_AUTH_URL"
-            url = request.query_params.get(f"{provider}_url")
-            if not url:
-                return HTTPException(
-                    status_code=400, detail=f"Missing {provider}_url in query params"
-                )
-
-            html = html.replace(f"INJECTED_{name}", f'window.{name} = "{url}"')
-
-        return HTMLResponse(html)
+        templates = Jinja2Templates(directory=FRONTEND_DIR)
+        return templates.TemplateResponse(
+            request,
+            "auth_options.html",
+            context={"google_url": google_url, "github_url": github_url},
+        )
 
 
 class AuthUser(BaseModel):

@@ -99,7 +99,7 @@ class MultiOAuthProvider(OAuthProxy):
 
         github_url = await github_auth_provider.authorize(client, params)
         google_url = await google_auth_provider.authorize(client, params)
-        return "/auth_options?github_url=" + quote(github_url) + "&google_url=" + quote(google_url)
+        return "/signin?github_url=" + quote(github_url) + "&google_url=" + quote(google_url)
 
     async def _handle_idp_callback(self, request: Request) -> RedirectResponse:
         txn_id = request.query_params.get("state")

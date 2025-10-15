@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
+FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 
 class Settings(BaseSettings):
@@ -37,7 +38,7 @@ class Settings(BaseSettings):
     SERVER_IMAGE: str = ""
     SERVER_SENTRY_DSN: str = ""
 
-    MIN_CONTAINER_POOL_SIZE: int = 2
+    MIN_CONTAINER_POOL_SIZE: int = 5
 
     OPENAI_API_KEY: str = ""
 
