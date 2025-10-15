@@ -20,7 +20,7 @@ async def setup_docker_for_function():
     await _cleanup_docker(scope="function")
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True, scope="session")
 async def setup_docker_for_session():
     """Initialize and clean up a docker environment for testing."""
     await _cleanup_docker(scope="session")
