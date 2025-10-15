@@ -18,9 +18,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "assertpy>=1.1",
     "icecream>=2.1.7",
     "ipython>=9.5.0",
     "pyright>=1.1.405",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
     "ruff>=0.13.0",
 ]
 
@@ -54,3 +57,11 @@ exclude = ["**/.venv/**"]
 explicit_start = false
 line_length = 120
 whitelines = 1
+
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+python_files = "test_*.py"
+python_functions = "test_*"
+norecursedirs = ".* venv node_modules"
+pythonpath = "."
