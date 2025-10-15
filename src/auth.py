@@ -1,7 +1,8 @@
 from typing import cast
 
 from fastapi import FastAPI
-from fastmcp.server.auth.providers.github import GitHubProvider
+from fastapi.requests import Request
+from fastapi.templating import Jinja2Templates
 from fastmcp.server.dependencies import get_access_token
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
@@ -11,7 +12,8 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.types import Receive, Scope, Send
 
-from src.settings import settings
+from src.multi_oauth_provider import OAUTH_PROVIDER_TYPE, MultiOAuthProvider
+from src.settings import FRONTEND_DIR
 
 
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
@@ -26,16 +28,10 @@ class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
 
 
 def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
-    github_auth_provider = GitHubProvider(
-        client_id=settings.OAUTH_GITHUB_CLIENT_ID,
-        client_secret=settings.OAUTH_GITHUB_CLIENT_SECRET,
-        base_url=settings.GATEWAY_ORIGIN,
-        redirect_path=settings.OAUTH_GITHUB_REDIRECT_PATH,
-        required_scopes=["user"],
-    )
+    auth_provider = MultiOAuthProvider()
 
     # Set up OAuth routes
-    for route in github_auth_provider.get_routes():
+    for route in auth_provider.get_routes():
         app.add_route(
             route.path,
             route.endpoint,
@@ -56,28 +52,45 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
     auth_middleware = [
         Middleware(
             RequireAuthMiddlewareCustom,  # verify auth for MCP routes
-            github_auth_provider.required_scopes,
+            auth_provider.required_scopes,
         ),
         Middleware(AuthContextMiddleware),  # store the auth user in the context_var
         Middleware(
             AuthenticationMiddleware,  # manage oauth flow
-            backend=BearerAuthBackend(cast(TokenVerifier, github_auth_provider)),
+            backend=BearerAuthBackend(cast(TokenVerifier, auth_provider)),
         ),
     ]
 
     for middleware in auth_middleware:
         app.add_middleware(middleware.cls, *middleware.args, **middleware.kwargs)
 
+    @app.get("/signin")
+    def auth_options(github_url: str, google_url: str, request: Request):  # type: ignore[reportUnusedFunction]
+        """Page to allow user to select the authentication provider."""
+        templates = Jinja2Templates(directory=FRONTEND_DIR)
+        return templates.TemplateResponse(
+            request,
+            "auth_options.html",
+            context={"google_url": google_url, "github_url": github_url},
+        )
+
 
 class AuthUser(BaseModel):
-    login: str
+    sub: str
+    auth_provider: OAUTH_PROVIDER_TYPE
+
+    name: str | None = None
+
+    # github specific
+    login: str | None = None
+
+    # google specific
     email: str | None = None
-    auth_provider: str = settings.auth_provider  # only supports GitHub for now
 
     @property
-    def user_name(self) -> str:
+    def user_id(self) -> str:
         """Unique user name combining login and auth provider"""
-        return f"{self.login}.{self.auth_provider}"
+        return f"{self.sub}.{self.auth_provider}"
 
 
 def get_auth_user() -> AuthUser:
@@ -85,9 +98,12 @@ def get_auth_user() -> AuthUser:
     if not token:
         raise RuntimeError("No auth user found")
 
+    sub = token.claims.get("sub")
+    name = token.claims.get("name")
     login = token.claims.get("login")
     email = token.claims.get("email")
-    if not login:
-        raise RuntimeError("No login found in auth token")
+    provider = token.claims.get("auth_provider")
+    if not sub or not provider:
+        raise RuntimeError("Missing sub or provider in auth token")
 
-    return AuthUser(login=login, email=email)
+    return AuthUser(sub=sub, auth_provider=provider, name=name, login=login, email=email)

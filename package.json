@@ -1,0 +1,22 @@
+{
+  "name": "mcp-gateway",
+  "version": "1.0.0",
+  "scripts": {
+    "format": "prettier --write \"frontend/**/*.html\""
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "prettier-plugin-jinja-template": "^2.1.0"
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": false,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "useTabs": false,
+    "plugins": [
+      "prettier-plugin-jinja-template"
+    ]
+  }
+}
