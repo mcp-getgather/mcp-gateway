@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import subprocess
 from typing import Literal
 
@@ -7,7 +8,7 @@ from aiodocker import Docker
 from aiodocker.networks import DockerNetwork
 
 from src.logs import logger
-from src.settings import settings
+from src.settings import ENV_FILE, settings
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -54,7 +55,7 @@ async def _init_docker():
     await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
     await docker.close()
 
-    await _run_cmd("docker compose --profile default up -d")
+    await _run_cmd(f"docker compose --profile default --env-file {ENV_FILE} up -d")
 
 
 async def _cleanup_docker(scope: Literal["function", "session"]):
@@ -86,3 +87,5 @@ async def _cleanup_docker(scope: Literal["function", "session"]):
             pass  # ignore image not found error
 
     await docker.close()
+
+    shutil.rmtree(settings.server_mount_parent_dir, ignore_errors=True)

@@ -24,6 +24,7 @@ dev = [
     "pyright>=1.1.405",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
+    "pytest-env>=1.2.0",
     "ruff>=0.13.0",
 ]
 
@@ -65,3 +66,7 @@ python_files = "test_*.py"
 python_functions = "test_*"
 norecursedirs = ".* venv node_modules"
 pythonpath = "."
+env = [ 
+  "ENV_FILE=.env.test",
+]
+
