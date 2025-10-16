@@ -109,7 +109,7 @@ class ServerManager:
     @classmethod
     async def get_user_hostname(cls, user: AuthUser) -> str:
         """Get the hostname of the user's container. Assign one if not exists."""
-        if not await cls._user_has_container(user):
+        if not await cls._get_container(user.user_id):
             async with docker_client(lock="write") as docker:
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
@@ -148,7 +148,7 @@ class ServerManager:
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
         async with docker_client(docker, lock="write") as _docker:
             containers = await cls._get_containers(
-                prefix=UNASSIGNED_USER_ID, docker=_docker, only_ready=False
+                partial_name=UNASSIGNED_USER_ID, docker=_docker, only_ready=False
             )
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
             if num <= 0:
@@ -159,17 +159,16 @@ class ServerManager:
             ])
 
     @classmethod
-    async def _user_has_container(cls, user: AuthUser, *, docker: Docker | None = None) -> bool:
-        containers = await cls._get_containers(prefix=user.user_id, docker=docker, only_ready=False)
-        return len(containers) != 0
-
-    @classmethod
     async def _get_containers(
-        cls, *, prefix: str | None = None, docker: Docker | None = None, only_ready: bool = True
-    ):
+        cls,
+        *,
+        partial_name: str | None = None,
+        docker: Docker | None = None,
+        only_ready: bool = True,
+    ) -> list[Container]:
         filters = {"ancestor": [settings.SERVER_IMAGE]}
-        if prefix:
-            filters["name"] = [prefix]
+        if partial_name:
+            filters["name"] = [partial_name]
 
         async with docker_client(docker, lock="read") as docker:
             containers = await docker.containers.list(filters=filters)  # type: ignore[reportUnknownMemberType]
@@ -185,8 +184,21 @@ class ServerManager:
         return containers
 
     @classmethod
+    async def _get_container(
+        cls, partial_name: str, *, docker: Docker | None = None
+    ) -> Container | None:
+        containers = await cls._get_containers(
+            partial_name=partial_name, docker=docker, only_ready=False
+        )
+        if len(containers) > 1:
+            raise ValueError(
+                f"Multiple containers found for {partial_name}, use _get_containers instead"
+            )
+        return containers[0] if containers else None
+
+    @classmethod
     async def _get_random_unassigned_container(cls, docker: Docker | None = None):
-        containers = await cls._get_containers(prefix=UNASSIGNED_USER_ID, docker=docker)
+        containers = await cls._get_containers(partial_name=UNASSIGNED_USER_ID, docker=docker)
         if not containers:
             raise ValueError("No unassigned containers found")
         container = random.choice(containers)
