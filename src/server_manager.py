@@ -188,7 +188,7 @@ class ServerManager:
     async def _get_random_unassigned_container(cls, docker: Docker | None = None):
         containers = await cls._get_containers(prefix=UNASSIGNED_USER_ID, docker=docker)
         if not containers:
-            raise ValueError("No unassigned containers found")
+            raise RuntimeError("No unassigned containers found")
         container = random.choice(containers)
         logger.info(f"Randomly selected unassigned container {container.id}")
         return container

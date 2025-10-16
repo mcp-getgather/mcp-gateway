@@ -65,11 +65,18 @@ OAUTH_GOOGLE_CLIENT_SECRET=
 docker compose up -d
 ```
 
-3. Approve "Subnet routes" for the tailscale router hostname
-`${DOCKER_DOMAIN}-router` at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
+3. Approve "Subnet routes" for the tailscale router hostname `${DOCKER_DOMAIN}-router`
+   at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
 
-4. Start the `fastapi` server
+4. Install dependencies
 
 ```bash
-uvicorn src.main:app --port 9000 --reload
+uv sync
+npm install
+```
+
+5. Start the `fastapi` server
+
+```bash
+npm run dev
 ```

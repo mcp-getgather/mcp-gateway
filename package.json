@@ -2,9 +2,11 @@
   "name": "mcp-gateway",
   "version": "1.0.0",
   "scripts": {
+    "dev": "nodemon --watch src --ext py --exec uv run python -m src.main",
     "format": "prettier --write \"frontend/**/*.html\""
   },
   "devDependencies": {
+    "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
     "prettier-plugin-jinja-template": "^2.1.0"
   },
