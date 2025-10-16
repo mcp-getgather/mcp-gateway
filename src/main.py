@@ -44,4 +44,4 @@ async def reload_containers(request: Request):
     token = request.headers.get("x-admin-token")
     if not token or token != settings.ADMIN_API_TOKEN:
         raise HTTPException(status_code=401, detail="Missing or invalid admin token")
-    await ServerManager.reload_containers()
+    await ServerManager.reload_containers(state="all")
