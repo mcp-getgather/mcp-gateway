@@ -1,4 +1,5 @@
 from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -36,7 +37,7 @@ app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="asset
 
 @app.get("/health")
 async def health():
-    return "Ok"
+    return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
 
 
 @app.post("/admin/reload")
