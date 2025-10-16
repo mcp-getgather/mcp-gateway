@@ -1,13 +1,14 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
 from src.hosted_link_proxy import HostedLinkProxyMiddleware
 from src.logs import setup_logging
 from src.mcp import get_mcp_apps
 from src.server_manager import ServerManager
-from src.settings import settings
+from src.settings import FRONTEND_DIR, settings
 
 mcp_apps = get_mcp_apps()
 
@@ -30,6 +31,8 @@ for route, mcp_app in mcp_apps.items():
 
 app.add_middleware(HostedLinkProxyMiddleware)
 
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+
 
 @app.get("/health")
 async def health():
@@ -41,4 +44,4 @@ async def reload_containers(request: Request):
     token = request.headers.get("x-admin-token")
     if not token or token != settings.ADMIN_API_TOKEN:
         raise HTTPException(status_code=401, detail="Missing or invalid admin token")
-    await ServerManager.reload_containers()
+    await ServerManager.reload_containers(state="all")

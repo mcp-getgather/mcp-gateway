@@ -2,10 +2,12 @@ import asyncio
 import platform
 import random
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import aiofiles
+import aiorwlock
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
 from nanoid import generate
@@ -17,6 +19,7 @@ from src.settings import settings
 
 UNASSIGNED_USER_ID = "UNASSIGNED"
 FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
+CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 
 
 class ContainerMetadata(BaseModel):
@@ -26,19 +29,35 @@ class ContainerMetadata(BaseModel):
 class Container:
     """
     Wrapper around a DockerContainer.
-    Container names are [USER_NAME]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]
+    Container names are [USER_ID]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]
     """
 
     def __init__(self, container: DockerContainer):
         self.container = container
 
     @property
+    def info(self) -> dict[str, Any]:
+        """Return data of DockerContainer.show()."""
+        return self.container._container  # type: ignore[reportPrivateUsage]
+
+    @property
     def id(self) -> str:
         return self.container.id[:12]
 
     @property
+    def ready(self) -> bool:
+        state: dict[str, Any] = self.info["State"]
+        if not state["Running"]:
+            return False
+
+        started_at = datetime.fromisoformat(state["StartedAt"].rstrip("Z")).replace(
+            tzinfo=timezone.utc
+        )
+        return datetime.now(timezone.utc) > started_at + CONTAINER_STARTUP_TIME
+
+    @property
     def hostname(self) -> str:
-        container_name = self.container._container["Names"][0].strip("/")  # type: ignore[reportUnknownMemberType]
+        container_name = self.container._container["Name"].strip("/")  # type: ignore[reportUnknownMemberType]
         return container_name.split("-")[-1]
 
     @classmethod
@@ -90,8 +109,8 @@ class ServerManager:
     @classmethod
     async def get_user_hostname(cls, user: AuthUser) -> str:
         """Get the hostname of the user's container. Assign one if not exists."""
-        async with docker_client() as docker:
-            if not await cls._user_has_container(user, docker=docker):
+        if not await cls._user_has_container(user):
+            async with docker_client(lock="write") as docker:
                 await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
         return cls.external_hostname(user.user_id)
@@ -107,24 +126,30 @@ class ServerManager:
         return f"{hostname}.{settings.DOCKER_DOMAIN}"
 
     @classmethod
-    async def reload_containers(cls):
-        # List all directories in the server mount directory
+    async def reload_containers(cls, *, state: Literal["all", "stopped"] = "stopped"):
         mount_dirs = cls._get_mount_dirs()
-        async with docker_client() as docker:
+        async with docker_client(lock="write") as docker:
+            if state == "stopped":
+                running_containers = await cls._get_containers(docker=docker)
+                running_dirs = set(container.mount_dir for container in running_containers)
+                mount_dirs = [item for item in mount_dirs if item not in running_dirs]
+
             await asyncio.gather(
                 *[
                     cls._create_or_replace_container(mount_dir=item, docker=docker)
                     for item in mount_dirs
                 ],
             )
-            await cls.backfill_container_pool(docker=docker)
+            logger.info(f"Reloaded {len(mount_dirs)} containers")
 
-        logger.info(f"Reloaded {len(mount_dirs)} containers")
+            await cls.backfill_container_pool(docker=docker)
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
-        async with docker_client(docker) as _docker:
-            containers = await cls._get_containers(prefix=UNASSIGNED_USER_ID, docker=_docker)
+        async with docker_client(docker, lock="write") as _docker:
+            containers = await cls._get_containers(
+                prefix=UNASSIGNED_USER_ID, docker=_docker, only_ready=False
+            )
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
             if num <= 0:
                 return
@@ -135,16 +160,29 @@ class ServerManager:
 
     @classmethod
     async def _user_has_container(cls, user: AuthUser, *, docker: Docker | None = None) -> bool:
-        containers = await cls._get_containers(prefix=user.user_id, docker=docker)
+        containers = await cls._get_containers(prefix=user.user_id, docker=docker, only_ready=False)
         return len(containers) != 0
 
     @classmethod
-    async def _get_containers(cls, *, prefix: str, docker: Docker | None = None):
-        async with docker_client(docker) as docker:
-            containers = await docker.containers.list(  # type: ignore[reportUnknownMemberType]
-                filters={"ancestor": [settings.SERVER_IMAGE], "name": [prefix]}
-            )
-        return [Container(container) for container in containers]
+    async def _get_containers(
+        cls, *, prefix: str | None = None, docker: Docker | None = None, only_ready: bool = True
+    ):
+        filters = {"ancestor": [settings.SERVER_IMAGE]}
+        if prefix:
+            filters["name"] = [prefix]
+
+        async with docker_client(docker, lock="read") as docker:
+            containers = await docker.containers.list(filters=filters)  # type: ignore[reportUnknownMemberType]
+            # load info for all containers
+            await asyncio.gather(*[
+                container.show()  # type: ignore[reportUnknownMemberType]
+                for container in containers
+            ])
+
+        containers = [Container(container) for container in containers]
+        if only_ready:
+            containers = [c for c in containers if c.ready]
+        return containers
 
     @classmethod
     async def _get_random_unassigned_container(cls, docker: Docker | None = None):
@@ -192,6 +230,7 @@ class ServerManager:
         config: dict[str, Any] = {
             "Image": settings.SERVER_IMAGE,
             "Env": [
+                f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
                 f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
@@ -221,9 +260,9 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            config["HostConfig"].update({"CapAdd": ["NET_ADMIN"]})
+            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
 
-        async with docker_client(docker) as docker:
+        async with docker_client(docker, lock="write") as docker:
             container = await docker.containers.create_or_replace(container_name, config)
             await container.start()  # type: ignore[reportUnknownMemberType]
             logger.info(f"Created or reloaded server hostname: {hostname}, id: {container.id[:12]}")
@@ -231,7 +270,7 @@ class ServerManager:
 
     @classmethod
     async def _assign_container(cls, user: AuthUser, *, docker: Docker | None = None):
-        async with docker_client(docker) as docker:
+        async with docker_client(docker, lock="write") as docker:
             # rename the container to [AuthUser.user_id]-[HOSTNAME]
             container = await cls._get_random_unassigned_container(docker)
             assigned_container_name = f"{user.user_id}-{container.hostname}"
@@ -300,13 +339,28 @@ class ServerManager:
         return f"{user.user_id}.{user.auth_provider}"
 
 
-@asynccontextmanager
-async def docker_client(client: Docker | None = None):
-    nested = client is not None
+CONTAINER_LOCK = aiorwlock.RWLock()
 
+
+@asynccontextmanager
+async def docker_client(
+    client: Docker | None = None, *, lock: Literal["read", "write"] | None = None
+):
+    nested = client is not None
     _client = client or Docker()
+
     try:
+        if not nested:  # only acquire lock if at the outer level
+            if lock == "read":
+                await CONTAINER_LOCK.reader_lock.acquire()
+            elif lock == "write":
+                await CONTAINER_LOCK.writer_lock.acquire()
+
         yield _client
     finally:
         if not nested:
             await _client.close()
+            if lock == "read":
+                CONTAINER_LOCK.reader_lock.release()
+            elif lock == "write":
+                CONTAINER_LOCK.writer_lock.release()
