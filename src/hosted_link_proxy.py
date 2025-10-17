@@ -1,6 +1,7 @@
 from typing import Awaitable, Callable
 
 import httpx
+import logfire
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -40,7 +41,7 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
             response = await client.request(
                 method=request.method,
                 url=url,
-                headers=dict(request.headers),
+                headers={**dict(request.headers), **logfire.get_context()},
                 content=await request.body(),
             )
 
