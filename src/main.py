@@ -1,5 +1,6 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 
+import logfire
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +26,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+logfire.configure(
+    service_name="mcp-gateway",
+    send_to_logfire="if-token-present",
+    token=settings.LOGFIRE_TOKEN or None,
+    environment=settings.ENVIRONMENT,
+    code_source=logfire.CodeSource(
+        repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
+    ),
+)
+logfire.instrument_fastapi(app)
+
 setup_mcp_auth(app, list(mcp_apps.keys()))
 for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
