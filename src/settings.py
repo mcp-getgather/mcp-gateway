@@ -8,12 +8,14 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
-print(f"ENV_FILE: {ENV_FILE}")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_ignore_empty=True, extra="ignore")
+
+    ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
+    LOGFIRE_TOKEN: str = ""
 
     HOST_DATA_DIR: str = ""
 
