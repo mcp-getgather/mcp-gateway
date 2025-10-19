@@ -245,6 +245,7 @@ class ServerManager:
             "NetworkingConfig": {
                 "EndpointsConfig": {cls._network_name(): {"Aliases": network_aliases}}
             },
+            "Labels": {"com.docker.compose.project": settings.DOCKER_PROJECT_NAME},
         }
 
         # If host is not macOS, container needs the tailscale router to access proxy service,
