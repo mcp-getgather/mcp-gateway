@@ -1,62 +1,75 @@
 # mcp-gateway
 
+A gateway that authenticates user and routes to the user's personal [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) container.
+
 ## Prerequisite
 
-### Github OAuth app
+### Docker Engine
 
-Create a Github OAuth app at [Developer Settings](https://github.com/settings/developers).
+Install from [Docker website](https://docs.docker.com/engine/install/).
 
-Set the Authorization callback URL to be `[PROTOCOL]//[HOST]/[CALLBACK_PATH]`.
+### Tailscale Auth Key
+
+Tailscale is used to create a subnet so that host and containers can access each other.
+
+Create an auth key at [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys).
+
+### Github OAuth App and Google OAuth App
+
+1. Create a Github OAuth app at [Developer Settings](https://github.com/settings/developers).
+
+2. Create a Google OAuth app at [Google Cloud Console](https://console.cloud.google.com/auth/clients).
+
+3. For both apps, set the Authorization callback URL to be `[PROTOCOL]//[HOST]/auth/callback`
 
 - `PROTOCOL` is `http:` or `https:`. `https:` is required in some cases, e.g., Claude Desktop Connectors.
 - `HOST` is the hostname of your service, including the port.
-- `CALLBACK_PATH` is default to `/auth/github/callback`, see below for more details.
 
 ## Run locally
 
-Make sure Authorization callback URL for your Github OAuth app is `http://localhost:9000/auth/github/callback`.
+1. Download an docker image for [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather)
 
-- Change port `9000` to match your port if you use a different one.
-- You can change `CALLBACK_PATH` via env variable `OAUTH_GITHUB_REDIRECT_PATH`.
+```bash
+docker image pull ghcr.io/mcp-getgather/mcp-getgather
+```
 
-You will need the additional env variables in `.env` file
+You can also build `mcp-getgather` image locally
+
+```bash
+cd /path/to/mcp-getgather
+docker build -t mcp-getgather .
+```
+
+2. Create an `.env` file from `env.template`
 
 ```
-# .env file
+DOCKER_PROJECT_NAME=getgather
+DOCKER_NETWORK_NAME=internal-net # keep this consistent with docker-compose.yml
+DOCKER_SUBNET_PREFIX=172.16.0
+DOCKER_DOMAIN=docker
+TS_AUTHKEY=
+
+SERVER_IMAGE=ghcr.io/mcp-getgather/mcp-getgather # or mcp-getgather if built locally
+HOST_DATA_DIR=
 
 GATEWAY_ORIGIN=http://localhost:9000
-SERVER_HOST_TEMPLATE=$name
 OAUTH_GITHUB_CLIENT_ID=
 OAUTH_GITHUB_CLIENT_SECRET=
-OAUTH_GITHUB_REDIRECT_PATH=/auth/github/callback
+OAUTH_GOOGLE_CLIENT_ID=
+OAUTH_GOOGLE_CLIENT_SECRET=
 ```
 
-`name` in `SERVER_HOST_TEMPLATE` will be filled as `localhost:23456` at run time, which is the hostname of the local [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) service.
+2. Run `docker compose` to set up `tailscale` and `coredns` for networking
 
-Run
+```bash
+docker compose up -d
+```
+
+3. Approve "Subnet routes" for the tailscale router hostname
+`${DOCKER_DOMAIN}-router` at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
+
+4. Start the `fastapi` server
 
 ```bash
 uvicorn src.main:app --port 9000 --reload
-```
-
-## Deploy to Fly.io
-
-Make sure Authorization callback URL for your Github OAuth app is `https://[FLY_APP_NAME].fly.dev/auth/github/callback`.
-
-- `FLY_APP_NAME` is the name of your fly app.
-- You can change `CALLBACK_PATH` via env variable `OAUTH_GITHUB_REDIRECT_PATH`.
-
-Run `fly secrets set` for the following env variables if they have not been set before
-
-```
-GATEWAY_ORIGIN=https://[FLY_APP_NAME].fly.dev
-OAUTH_GITHUB_CLIENT_ID=
-OAUTH_GITHUB_CLIENT_SECRET=
-OAUTH_GITHUB_REDIRECT_PATH=/auth/github/callback
-```
-
-Run
-
-```bash
-fly deploy
 ```
