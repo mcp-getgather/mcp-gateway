@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
+    GIT_REV: str = "main"
     LOGFIRE_TOKEN: str = ""
 
     HOST_DATA_DIR: str = ""

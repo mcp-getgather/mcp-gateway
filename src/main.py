@@ -1,4 +1,5 @@
 from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import datetime
 
 import logfire
 from fastapi import FastAPI, HTTPException, Request
@@ -48,7 +49,7 @@ app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="asset
 
 @app.get("/health")
 async def health():
-    return "Ok"
+    return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
 
 
 @app.post("/admin/reload")
