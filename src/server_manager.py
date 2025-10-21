@@ -243,6 +243,7 @@ class ServerManager:
             "Image": settings.SERVER_IMAGE,
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
+                f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
                 f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",

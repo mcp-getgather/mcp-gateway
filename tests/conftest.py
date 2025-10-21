@@ -49,10 +49,12 @@ async def _run_cmd(cmd: str):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    await process.communicate()
+    data, error = await process.communicate()
     exit_status = process.returncode
     if exit_status != 0:
-        raise RuntimeError(f"Command '{cmd}' failed with exit status: {exit_status}")
+        raise RuntimeError(
+            f"Command '{cmd}' failed with exit status: {exit_status}: {error.decode()}"
+        )
 
 
 async def _init_docker():
@@ -66,7 +68,7 @@ async def _init_docker():
     await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
     await docker.close()
 
-    await _run_cmd(f"docker compose --profile default --env-file {ENV_FILE} up -d")
+    await _run_cmd(f"docker compose --env-file {ENV_FILE} up -d")
 
 
 async def _cleanup_docker(scope: Literal["function", "session"]):
