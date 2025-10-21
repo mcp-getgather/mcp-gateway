@@ -6,11 +6,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
-from src.hosted_link_proxy import HostedLinkProxyMiddleware
 from src.logs import setup_logging
 from src.mcp import get_mcp_apps
 from src.server_manager import ServerManager
 from src.settings import FRONTEND_DIR, settings
+from src.web_page_proxy import WebPageProxyMiddleware
 
 mcp_apps = get_mcp_apps()
 
@@ -42,7 +42,7 @@ setup_mcp_auth(app, list(mcp_apps.keys()))
 for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
 
-app.add_middleware(HostedLinkProxyMiddleware)
+app.add_middleware(WebPageProxyMiddleware)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
