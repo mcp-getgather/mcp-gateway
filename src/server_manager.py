@@ -233,7 +233,7 @@ class ServerManager:
 
         container_name = Container.name_for_user(user, hostname)
 
-        src_data_dir = str(Container.mount_dir_for_hostname(hostname))
+        src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
         network_aliases = [cls.external_hostname(hostname)]
         if user:

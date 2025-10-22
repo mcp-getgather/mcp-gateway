@@ -8,8 +8,10 @@ from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.provider import TokenVerifier
 from pydantic import BaseModel
+from starlette.datastructures import Headers
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.responses import RedirectResponse
 from starlette.types import Receive, Scope, Send
 
 from src.multi_oauth_provider import OAUTH_PROVIDER_TYPE, MultiOAuthProvider
@@ -17,12 +19,24 @@ from src.settings import FRONTEND_DIR
 
 
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
-    """Custom RequireAuthMiddleware to require authentication for MCP routes"""
+    """
+    Custom RequireAuthMiddleware to require authentication for MCP routes.
+    If requests are from non mcp clients, redirect to the home page.
+    """
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         path = scope.get("path")
+
         if path and path.startswith("/mcp"):
-            await super().__call__(scope, receive, send)
+            headers = Headers(scope=scope)
+            accept = headers.get("accept") or ""
+
+            if "text/event-stream" not in accept:
+                # if client does not accept text/event-stream, redirect to the home page
+                response = RedirectResponse(url="/", status_code=307)
+                await response(scope, receive, send)
+            else:
+                await super().__call__(scope, receive, send)
         else:
             await self.app(scope, receive, send)
 
