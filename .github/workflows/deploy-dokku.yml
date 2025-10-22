@@ -1,0 +1,54 @@
+name: Deploy to Dokku
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show 5 most recent commits
+        run: git log --oneline -n 5
+
+      - name: Deploy to Dokku
+        uses: dokku/github-action@master
+        with:
+          trace: 1
+          branch: main
+          git_push_flags: --force
+          git_remote_url: ${{ secrets.DOKKU_GIT_REMOTE_URL }}
+          ssh_private_key: ${{ secrets.DOKKU_SSH_PRIVATE_KEY }}
+
+      - name: Verify deployment via health endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |-
+          LOCAL_COMMIT=$(git rev-parse HEAD)
+          echo "Local commit: $LOCAL_COMMIT"
+
+          # Check health endpoint and extract git revision
+          HEALTH_RESPONSE=$(curl -s "${APP_URL}/health" 2> /dev/null || echo "FAILED")
+          echo "Health response: $HEALTH_RESPONSE"
+
+          if [[ "$HEALTH_RESPONSE" == "FAILED" ]]; then
+            echo "Error: Health endpoint is not accessible"
+            exit 1
+          fi
+
+          # Extract git revision from health response (format: "OK <timestamp> GIT_REV: <commit>")
+          REMOTE_COMMIT=$(echo "$HEALTH_RESPONSE" | grep -o "GIT_REV: [a-f0-9]*" | cut -d' ' -f2)
+          echo "Remote commit: $REMOTE_COMMIT"
+
+          if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
+            echo "Error: Local and remote commits do not match"
+            exit 1
+          fi
+
+          echo "✅ Deployment and health endpoint verified successfully"

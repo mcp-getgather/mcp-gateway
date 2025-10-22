@@ -1,3 +1,4 @@
+from os import environ
 from pathlib import Path
 
 from pydantic import model_validator
@@ -6,12 +7,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
+ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=PROJECT_DIR / ".env", env_ignore_empty=True, extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=ENV_FILE, env_ignore_empty=True, extra="ignore")
+
+    ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
+    GIT_REV: str = "main"
+    LOGFIRE_TOKEN: str = ""
 
     HOST_DATA_DIR: str = ""
 

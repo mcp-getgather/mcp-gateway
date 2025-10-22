@@ -3,6 +3,7 @@ from typing import NamedTuple
 from urllib.parse import urlparse
 
 import httpx
+import logfire
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
 
@@ -20,14 +21,17 @@ def _create_client_factory(path: str):
         server_host = await ServerManager.get_user_hostname(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
+        headers = {
+            "x-forwarded-proto": gatewway_origin.scheme,
+            "x-forwarded-host": gatewway_origin.netloc,
+        }
+        headers.update(logfire.get_context())
+
         logger.info(f"Proxy mcp requests for {user.user_id} / {user.name} to {server_host}{path}")
         return ProxyClient[StreamableHttpTransport](
             StreamableHttpTransport(
                 f"http://{server_host}{path}",
-                headers={
-                    "x-forwarded-proto": gatewway_origin.scheme,
-                    "x-forwarded-host": gatewway_origin.netloc,
-                },
+                headers=headers,
                 sse_read_timeout=settings.PROXY_READ_TIMEOUT,
             )
         )

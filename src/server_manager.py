@@ -221,7 +221,7 @@ class ServerManager:
 
         container_name = Container.name_for_user(user, hostname)
 
-        src_data_dir = str(Container.mount_dir_for_hostname(hostname))
+        src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
         network_aliases = [cls.external_hostname(hostname)]
         if user:
@@ -231,6 +231,7 @@ class ServerManager:
             "Image": settings.SERVER_IMAGE,
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
+                f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
                 "BROWSER_TIMEOUT=300000",
                 f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
@@ -245,6 +246,7 @@ class ServerManager:
             "NetworkingConfig": {
                 "EndpointsConfig": {cls._network_name(): {"Aliases": network_aliases}}
             },
+            "Labels": {"com.docker.compose.project": settings.DOCKER_PROJECT_NAME},
         }
 
         # If host is not macOS, container needs the tailscale router to access proxy service,

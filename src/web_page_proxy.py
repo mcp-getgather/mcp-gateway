@@ -1,6 +1,7 @@
 from typing import Awaitable, Callable
 
 import httpx
+import logfire
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -12,12 +13,18 @@ HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link", "/dpage"]
 STATIC_PATHS = ["/__assets", "/__static"]
 
 
-class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
+class WebPageProxyMiddleware(BaseHTTPMiddleware):
+    """
+    Proxy web page requests to the mcp-getgather servers.
+    - For hosted links, proxy to the server which generated the link.
+    - For static pages, proxy to a random unassigned server.
+    """
+
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         path = request.url.path
-        if any(path.startswith(p) for p in HOSTED_LINK_PATHS + STATIC_PATHS):
+        if any(path.startswith(p) for p in HOSTED_LINK_PATHS + STATIC_PATHS) or path == "/":
             try:
                 server_host = await self._get_server_host(path)
             except Exception as e:
@@ -40,7 +47,7 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
             response = await client.request(
                 method=request.method,
                 url=url,
-                headers=dict(request.headers),
+                headers={**dict(request.headers), **logfire.get_context()},
                 content=await request.body(),
             )
 
@@ -60,7 +67,7 @@ class HostedLinkProxyMiddleware(BaseHTTPMiddleware):
         return "-".join(parts[:-1])
 
     async def _get_server_host(self, path: str) -> str:
-        if any(path.startswith(p) for p in STATIC_PATHS):
+        if any(path.startswith(p) for p in STATIC_PATHS) or path == "/":
             return await ServerManager.get_unassigned_server_host()
 
         # hosted link

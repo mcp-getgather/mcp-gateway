@@ -1,16 +1,18 @@
 import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
+from datetime import datetime
 
+import logfire
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
-from src.hosted_link_proxy import HostedLinkProxyMiddleware
 from src.logs import logger, setup_logging
 from src.mcp import get_mcp_apps
 from src.server_manager import ServerManager
 from src.settings import FRONTEND_DIR, settings
+from src.web_page_proxy import WebPageProxyMiddleware
 
 
 @asynccontextmanager
@@ -22,15 +24,25 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+logfire.configure(
+    service_name="mcp-gateway",
+    send_to_logfire="if-token-present",
+    token=settings.LOGFIRE_TOKEN or None,
+    environment=settings.ENVIRONMENT,
+    code_source=logfire.CodeSource(
+        repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
+    ),
+)
+logfire.instrument_fastapi(app)
 
-app.add_middleware(HostedLinkProxyMiddleware)
+app.add_middleware(WebPageProxyMiddleware)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
 
 @app.get("/health")
 async def health():
-    return "Ok"
+    return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
 
 
 @app.post("/admin/reload")
