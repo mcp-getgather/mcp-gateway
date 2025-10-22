@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, get_args
+from typing import get_args
 from urllib.parse import quote
 
 from fastmcp.server.auth import TokenVerifier
@@ -14,9 +14,8 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from src.settings import settings
+from src.settings import OAUTH_PROVIDER_TYPE, settings
 
-OAUTH_PROVIDER_TYPE = Literal["github", "google"]
 OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))
 
 github_auth_provider = GitHubProvider(

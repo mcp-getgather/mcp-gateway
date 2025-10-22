@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
-from src.logs import setup_logging
+from src.logs import logger, setup_logging
 from src.mcp import get_mcp_apps
 from src.server_manager import ServerManager
 from src.settings import FRONTEND_DIR, settings
@@ -38,7 +38,12 @@ logfire.configure(
 )
 logfire.instrument_fastapi(app)
 
-setup_mcp_auth(app, list(mcp_apps.keys()))
+if settings.auth_enabled:
+    logger.info("Setting up MCP authentication")
+    setup_mcp_auth(app, list(mcp_apps.keys()))
+else:
+    logger.warning("MCP authentication is disabled")
+
 for route, mcp_app in mcp_apps.items():
     app.mount(route, mcp_app)
 
