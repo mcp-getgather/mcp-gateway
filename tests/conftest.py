@@ -49,12 +49,10 @@ async def _run_cmd(cmd: str):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    data, error = await process.communicate()
+    await process.communicate()
     exit_status = process.returncode
     if exit_status != 0:
-        raise RuntimeError(
-            f"Command '{cmd}' failed with exit status: {exit_status}: {error.decode()}"
-        )
+        raise RuntimeError(f"Command '{cmd}' failed with exit status: {exit_status}")
 
 
 async def _init_docker():
