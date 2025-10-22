@@ -6,8 +6,36 @@ on:
   workflow_dispatch:
 
 jobs:
+  wait-for-checks:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Wait for Static Analysis
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'python-coding-style'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Wait for Type Check
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'python-type-check'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+      - name: Wait for Unit Tests
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'unit-tests'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   deploy:
     runs-on: ubuntu-22.04
+    needs: wait-for-checks
     steps:
       - name: Checkout
         uses: actions/checkout@v4
