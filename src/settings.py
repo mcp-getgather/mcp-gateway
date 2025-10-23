@@ -1,5 +1,6 @@
 from os import environ
 from pathlib import Path
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,6 +9,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
+OAUTH_PROVIDER_TYPE = Literal["github", "google"]
 
 
 class Settings(BaseSettings):
@@ -53,8 +55,6 @@ class Settings(BaseSettings):
         required = [
             "HOST_DATA_DIR",
             "GATEWAY_ORIGIN",
-            "OAUTH_GITHUB_CLIENT_ID",
-            "OAUTH_GITHUB_CLIENT_SECRET",
             "DOCKER_PROJECT_NAME",
             "DOCKER_NETWORK_NAME",
             "SERVER_IMAGE",
@@ -63,6 +63,15 @@ class Settings(BaseSettings):
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
         return self
+
+    @property
+    def auth_enabled(self) -> bool:
+        return all([
+            self.OAUTH_GITHUB_CLIENT_ID,
+            self.OAUTH_GITHUB_CLIENT_SECRET,
+            self.OAUTH_GOOGLE_CLIENT_ID,
+            self.OAUTH_GOOGLE_CLIENT_SECRET,
+        ])
 
     @property
     def server_mount_parent_dir(self) -> Path:

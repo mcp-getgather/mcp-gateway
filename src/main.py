@@ -67,7 +67,12 @@ async def main():
     await ServerManager.reload_containers()
 
     app.state.mcp_apps = await get_mcp_apps()
-    setup_mcp_auth(app, list(app.state.mcp_apps.keys()))
+    if settings.auth_enabled:
+        logger.info("Setting up MCP authentication")
+        setup_mcp_auth(app, list(app.state.mcp_apps.keys()))
+    else:
+        logger.warning("MCP authentication is disabled")
+
     for route, mcp_app in app.state.mcp_apps.items():
         app.mount(route, mcp_app)
 
