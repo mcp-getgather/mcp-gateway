@@ -55,6 +55,11 @@ def setup_logging(
     if segment_write_key:
         logger.info("Initializing Segment")
         analytics.write_key = segment_write_key
+    else:
+        logger.warning("No SEGMENT_WRITE_KEY provided, Segment is disabled")
+        analytics.write_key = "disabled"
+        analytics.debug = False
+        analytics.send = False
 
 
 logger = logging.getLogger(LOGGER_NAME)
