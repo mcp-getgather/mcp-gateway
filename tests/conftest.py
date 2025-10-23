@@ -11,6 +11,7 @@ from aiodocker.networks import DockerNetwork
 
 from src import server_manager
 from src.logs import logger
+from src.server_manager import ServerManager
 from src.settings import ENV_FILE, settings
 
 
@@ -64,11 +65,7 @@ async def _init_docker():
     Initialize docker environment.
     Pull SERVER_IMAGE image and start services & networks in docker-compose.yml.
     """
-    docker = Docker()
-    source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
-    await docker.images.pull(source_image)
-    await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
-    await docker.close()
+    await ServerManager.pull_server_image()
 
     cmd = f"docker compose"
     if ENV_FILE:
