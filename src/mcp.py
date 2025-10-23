@@ -1,11 +1,14 @@
 from time import sleep
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from urllib.parse import urlparse
 
 import httpx
 import logfire
+import segment.analytics as analytics
 from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
+from pydantic import BaseModel
 
 from src.auth import get_auth_user
 from src.logs import logger
@@ -15,10 +18,25 @@ from src.settings import settings
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
 
+class SegmentMiddleware(Middleware):
+    async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):
+        user = get_auth_user()
+        server_host = await ServerManager.get_user_server_host(user)
+
+        data: dict[str, Any] = {"method": context.method}
+        if isinstance(context.message, BaseModel):
+            data["message"] = context.message.model_dump(exclude_none=True)
+        else:
+            data["message"] = str(context.message)
+        analytics.track(server_host, "mcp_request", data)  # type: ignore[reportUnknownMemberType]
+
+        return await call_next(context)
+
+
 def _create_client_factory(path: str):
     async def _create_client():
         user = get_auth_user()
-        server_host = await ServerManager.get_user_hostname(user)
+        server_host = await ServerManager.get_user_server_host(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
         headers = {
@@ -28,6 +46,10 @@ def _create_client_factory(path: str):
         headers.update(logfire.get_context())
 
         logger.info(f"Proxy mcp requests for {user.user_id} / {user.name} to {server_host}{path}")
+        data = user.model_dump(exclude_none=True)
+        data["path"] = path
+        analytics.identify(server_host, data)  # type: ignore[reportUnknownMemberType]
+
         return ProxyClient[StreamableHttpTransport](
             StreamableHttpTransport(
                 f"http://{server_host}{path}",
@@ -41,7 +63,9 @@ def _create_client_factory(path: str):
 
 def _get_mcp_proxy(route: MCPRoute):
     proxy = FastMCPProxy(
-        client_factory=_create_client_factory(route.path), name=f"GetGather {route.name} Proxy"
+        client_factory=_create_client_factory(route.path),
+        name=f"GetGather {route.name} Proxy",
+        middleware=[SegmentMiddleware()],
     )
 
     @proxy.tool

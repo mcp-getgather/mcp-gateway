@@ -2,6 +2,7 @@ from typing import Awaitable, Callable
 
 import httpx
 import logfire
+import segment.analytics as analytics
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -27,6 +28,7 @@ class WebPageProxyMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in HOSTED_LINK_PATHS + STATIC_PATHS) or path == "/":
             try:
                 server_host = await self._get_server_host(path)
+                analytics.track(server_host, "hosted_link_request", {"path": path})  # type: ignore[reportUnknownMemberType]
             except Exception as e:
                 logger.error(f"Invalid url: {path}, error: {e}", exc_info=True)
                 return Response(status_code=400, content="Invalid url")
