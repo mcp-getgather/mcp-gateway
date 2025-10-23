@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     GIT_REV: str = "main"
     LOGFIRE_TOKEN: str = ""
+    SEGMENT_WRITE_KEY: str = ""
 
     HOST_DATA_DIR: str = ""
 

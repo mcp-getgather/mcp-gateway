@@ -58,7 +58,11 @@ async def main():
     Start mcp-getgather containers, fetch MCP routes,
     then set up the FastAPI server and start it.
     """
-    setup_logging(level=settings.LOG_LEVEL, sentry_dsn=settings.GATEWAY_SENTRY_DSN)
+    setup_logging(
+        level=settings.LOG_LEVEL,
+        sentry_dsn=settings.GATEWAY_SENTRY_DSN,
+        segment_write_key=settings.SEGMENT_WRITE_KEY,
+    )
 
     await ServerManager.reload_containers()
 
