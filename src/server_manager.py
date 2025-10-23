@@ -159,6 +159,13 @@ class ServerManager:
             ])
 
     @classmethod
+    async def pull_server_image(cls):
+        async with docker_client() as docker:
+            source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
+            await docker.images.pull(source_image)
+            await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
+
+    @classmethod
     async def _get_containers(
         cls,
         *,
