@@ -1,22 +1,18 @@
+from time import sleep
 from typing import NamedTuple
 from urllib.parse import urlparse
 
+import httpx
 import logfire
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
 
 from src.auth import get_auth_user
 from src.logs import logger
-from src.server_manager import ServerManager
+from src.server_manager import CONTAINER_STARTUP_TIME, ServerManager
 from src.settings import settings
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
-MCP_ROUTES = [
-    MCPRoute("All", "/mcp"),
-    MCPRoute("Books", "/mcp-books"),
-    MCPRoute("Food", "/mcp-food"),
-    MCPRoute("Media", "/mcp-media"),
-]
 
 
 def _create_client_factory(path: str):
@@ -57,6 +53,28 @@ def _get_mcp_proxy(route: MCPRoute):
     return proxy.http_app(path="/")
 
 
-def get_mcp_apps():
-    proxies = {route.path: _get_mcp_proxy(route) for route in MCP_ROUTES}
+async def get_mcp_apps():
+    routes = await _fetch_mcp_routes()
+    proxies = {route.path: _get_mcp_proxy(route) for route in routes}
     return proxies
+
+
+async def _fetch_mcp_routes():
+    logger.info("Fetching MCP routes from mcp-getgather container")
+    try:
+        host = await ServerManager.get_unassigned_server_host()
+    except RuntimeError:
+        wait_seconds = CONTAINER_STARTUP_TIME.total_seconds()
+        logger.info(f"Waiting for {wait_seconds} seconds for containers to start")
+        # note: this is intentionally blocking instead of asyncio.sleep
+        sleep(CONTAINER_STARTUP_TIME.total_seconds())
+
+        host = await ServerManager.get_unassigned_server_host()
+
+    url = f"http://{host}/api/docs-mcp"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.request(method="GET", url=url)
+        routes = [MCPRoute(item["name"], item["route"]) for item in response.json()]
+
+    return routes
