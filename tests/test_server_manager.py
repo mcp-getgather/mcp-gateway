@@ -1,3 +1,5 @@
+import asyncio
+import platform
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
@@ -75,10 +77,7 @@ async def test_reload_unassigned_container():
 async def test_assign_container():
     hostname = await ServerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
     user = AuthUser(sub="test_user", auth_provider="github")
-
-    # skip container startup time
-    with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=0)):
-        user_id = await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
+    user_id = await _assign_container(user)
     assert user_id == user.user_id
 
     await _assert_container_info(
@@ -104,9 +103,7 @@ async def test_assign_container():
 async def test_reload_assigned_container():
     hostname = await ServerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
     user = AuthUser(sub="test_user", auth_provider="github")
-
-    with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=0)):
-        await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
+    await _assign_container(user)
 
     mount_dir = Container.mount_dir_for_hostname(hostname)
     container = await ServerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
@@ -126,6 +123,15 @@ async def test_reload_assigned_container():
 
     _assert_same_container(container, reloaded_container)
     await _assert_mount_dir(hostname, user)
+
+
+async def _assign_container(user: AuthUser) -> None:
+    # non-macOS systems need to wait for container to install iproute2 before assignment
+    start_time_seconds = 2 if platform.system() != "Darwin" else 0
+    await asyncio.sleep(start_time_seconds)
+
+    with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=start_time_seconds)):
+        return await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
 
 
 async def _assert_container_info(
