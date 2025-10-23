@@ -3,10 +3,13 @@ import shutil
 import subprocess
 from typing import Literal
 
+import aiorwlock
+import pytest
 import pytest_asyncio
 from aiodocker import Docker
 from aiodocker.networks import DockerNetwork
 
+from src import server_manager
 from src.logs import logger
 from src.settings import ENV_FILE, settings
 
@@ -30,6 +33,14 @@ async def setup_docker_for_session():
     yield
 
     await _cleanup_docker(scope="session")
+
+
+@pytest.fixture(autouse=True)
+def reset_container_lock():
+    """Reset the CONTAINER_LOCK for each test to avoid event loop binding issues."""
+    server_manager.CONTAINER_LOCK = aiorwlock.RWLock()
+    yield
+    server_manager.CONTAINER_LOCK = aiorwlock.RWLock()
 
 
 async def _run_cmd(cmd: str):
@@ -59,7 +70,7 @@ async def _init_docker():
     await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
     await docker.close()
 
-    cmd = f"docker compose --profile default"
+    cmd = f"docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
     cmd += " up -d"

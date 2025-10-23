@@ -10,10 +10,8 @@ networks:
 
 services:
   tailscale:
-    profiles:
-      - default
     image: tailscale/tailscale:latest
-    container_name: tailscale-subnet-router
+    container_name: ${DOCKER_PROJECT_NAME}-tailscale-subnet-router
     hostname: ${DOCKER_DOMAIN}-router
     cap_add:
       - NET_ADMIN
@@ -36,10 +34,8 @@ services:
     command: sh -c "sleep 5 && iptables -t nat -A POSTROUTING -s ${DOCKER_SUBNET_PREFIX}.0/24 -o tailscale0 -j MASQUERADE && exec /usr/local/bin/containerboot"
 
   coredns:
-    profiles:
-      - default
     image: coredns/coredns:latest
-    container_name: coredns
+    container_name: ${DOCKER_PROJECT_NAME}-coredns
     command: -conf /etc/coredns/Corefile
     expose:
       - "53/udp"
