@@ -77,8 +77,7 @@ async def test_reload_unassigned_container():
 async def test_assign_container():
     hostname = await ServerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
     user = AuthUser(sub="test_user", auth_provider="github")
-    user_id = await _assign_container(user)
-    assert user_id == user.user_id
+    await _assign_container(user)
 
     await _assert_container_info(
         hostname=hostname,
@@ -91,10 +90,7 @@ async def test_assign_container():
             "RW": True,
             "Propagation": "rprivate",
         },
-        network_aliases=[
-            f"{hostname}.{settings.DOCKER_DOMAIN}",
-            f"{user_id}.{settings.DOCKER_DOMAIN}",
-        ],
+        network_aliases=[f"{hostname}.{settings.DOCKER_DOMAIN}"],
     )
     await _assert_mount_dir(hostname, user)
 
@@ -131,7 +127,7 @@ async def _assign_container(user: AuthUser) -> None:
     await asyncio.sleep(start_time_seconds)
 
     with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=start_time_seconds)):
-        return await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
+        await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
 
 
 async def _assert_container_info(
