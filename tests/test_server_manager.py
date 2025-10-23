@@ -127,7 +127,7 @@ async def test_reload_assigned_container():
 
 async def _assign_container(user: AuthUser) -> None:
     # non-macOS systems need to wait for container to install iproute2 before assignment
-    start_time_seconds = 2 if platform.system() != "Darwin" else 0
+    start_time_seconds = 5 if platform.system() != "Darwin" else 0
     await asyncio.sleep(start_time_seconds)
 
     with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=start_time_seconds)):
