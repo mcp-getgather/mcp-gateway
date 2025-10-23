@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "nodemon --watch src --ext py --exec uv run python -m src.main",
+    "format:check": "prettier --check \"frontend/**/*.html\"",
     "format": "prettier --write \"frontend/**/*.html\""
   },
   "devDependencies": {
