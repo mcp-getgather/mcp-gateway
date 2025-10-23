@@ -13,11 +13,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare back-end environment
-        uses: ./.github/actions/prepare-backend
+      - name: Install dependencies
+        uses: ./.github/actions/install
 
       - name: Check formatting with Ruff
         run: uv run ruff format --check .
+
       - name: Lint with Ruff
         run: uv run ruff check .
 
@@ -27,8 +28,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Prepare back-end environment
-        uses: ./.github/actions/prepare-backend
+      - name: Install dependencies
+        uses: ./.github/actions/install
 
       - name: Type check with pyright
         run: uv run pyright .
+
+  frontend-format-check:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        uses: ./.github/actions/install
+
+      - name: Format check with Prettier
+        run: npm run format:check
