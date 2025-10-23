@@ -24,6 +24,7 @@ jobs:
       - name: Run unit tests
         run: uv run pytest -o env=ENV_FILE=
         env:
+          GATEWAY_ORIGIN: http://localhost:9000
           DOCKER_PROJECT_NAME: getgather-ci
           DOCKER_NETWORK_NAME: internal-net
           DOCKER_SUBNET_PREFIX: 172.24.0
