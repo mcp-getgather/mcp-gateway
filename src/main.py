@@ -50,6 +50,8 @@ async def reload_containers(request: Request):
     token = request.headers.get("x-admin-token")
     if not token or token != settings.ADMIN_API_TOKEN:
         raise HTTPException(status_code=401, detail="Missing or invalid admin token")
+
+    await ServerManager.pull_server_image()
     await ServerManager.reload_containers(state="all")
 
 
@@ -64,7 +66,6 @@ async def main():
         segment_write_key=settings.SEGMENT_WRITE_KEY,
     )
 
-    await ServerManager.pull_server_image()
     await ServerManager.reload_containers()
 
     app.state.mcp_apps = await get_mcp_apps()
