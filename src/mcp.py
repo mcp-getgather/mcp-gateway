@@ -21,14 +21,17 @@ MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 class SegmentMiddleware(Middleware):
     async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):
         user = get_auth_user()
-        server_host = await ServerManager.get_user_server_host(user)
+        container = await ServerManager.get_user_container(user)
 
         data: dict[str, Any] = {"method": context.method}
         if isinstance(context.message, BaseModel):
             data["message"] = context.message.model_dump(exclude_none=True)
         else:
             data["message"] = str(context.message)
-        analytics.track(server_host, "mcp_request", data)  # type: ignore[reportUnknownMemberType]
+        analytics.track(container.hostname, "mcp_request", data)  # type: ignore[reportUnknownMemberType]
+        logger.info(
+            f"Proxy MCP request for {user.user_id} ({user.name}) to {container.hostname} ({container.ip})"
+        )
 
         return await call_next(context)
 
@@ -36,7 +39,7 @@ class SegmentMiddleware(Middleware):
 def _create_client_factory(path: str):
     async def _create_client():
         user = get_auth_user()
-        server_host = await ServerManager.get_user_server_host(user)
+        container = await ServerManager.get_user_container(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
         headers = {
@@ -45,14 +48,16 @@ def _create_client_factory(path: str):
         }
         headers.update(logfire.get_context())
 
-        logger.info(f"Proxy mcp requests for {user.user_id} / {user.name} to {server_host}{path}")
+        logger.info(
+            f"Proxy {path} connection for {user.user_id} ({user.name}) to {container.hostname} ({container.ip})"
+        )
         data = user.model_dump(exclude_none=True)
         data["path"] = path
-        analytics.identify(server_host, data)  # type: ignore[reportUnknownMemberType]
+        analytics.identify(container.hostname, data)  # type: ignore[reportUnknownMemberType]
 
         return ProxyClient[StreamableHttpTransport](
             StreamableHttpTransport(
-                f"http://{server_host}{path}",
+                f"http://{container.ip}{path}",
                 headers=headers,
                 sse_read_timeout=settings.PROXY_READ_TIMEOUT,
             )
@@ -86,16 +91,16 @@ async def get_mcp_apps():
 async def _fetch_mcp_routes():
     logger.info("Fetching MCP routes from mcp-getgather container")
     try:
-        host = await ServerManager.get_unassigned_server_host()
+        container = await ServerManager.get_unassigned_container()
     except RuntimeError:
         wait_seconds = CONTAINER_STARTUP_TIME.total_seconds()
         logger.info(f"Waiting for {wait_seconds} seconds for containers to start")
         # note: this is intentionally blocking instead of asyncio.sleep
         sleep(CONTAINER_STARTUP_TIME.total_seconds())
 
-        host = await ServerManager.get_unassigned_server_host()
+        container = await ServerManager.get_unassigned_container()
 
-    url = f"http://{host}/api/docs-mcp"
+    url = f"http://{container.ip}/api/docs-mcp"
 
     async with httpx.AsyncClient() as client:
         response = await client.request(method="GET", url=url)

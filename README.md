@@ -44,7 +44,6 @@ docker build -t mcp-getgather .
 
 ```
 DOCKER_PROJECT_NAME=getgather
-DOCKER_NETWORK_NAME=internal-net # keep this consistent with docker-compose.yml
 DOCKER_SUBNET_PREFIX=172.16.0
 DOCKER_DOMAIN=docker
 TS_AUTHKEY=
@@ -59,7 +58,7 @@ OAUTH_GOOGLE_CLIENT_ID=
 OAUTH_GOOGLE_CLIENT_SECRET=
 ```
 
-2. Run `docker compose` to set up `tailscale` and `coredns` for networking
+2. Run `docker compose` to set up `tailscale` for networking
 
 ```bash
 docker compose up -d

@@ -36,7 +36,6 @@ class Settings(BaseSettings):
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
 
     DOCKER_PROJECT_NAME: str = ""
-    DOCKER_NETWORK_NAME: str = ""
     DOCKER_SUBNET_PREFIX: str = ""
     DOCKER_DOMAIN: str = ""
 
@@ -56,7 +55,6 @@ class Settings(BaseSettings):
             "HOST_DATA_DIR",
             "GATEWAY_ORIGIN",
             "DOCKER_PROJECT_NAME",
-            "DOCKER_NETWORK_NAME",
             "SERVER_IMAGE",
         ]
         for name in required:

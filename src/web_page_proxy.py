@@ -7,7 +7,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.logs import logger
-from src.server_manager import ServerManager
+from src.server_manager import Container, ServerManager
 from src.settings import settings
 
 HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link", "/dpage"]
@@ -27,19 +27,20 @@ class WebPageProxyMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if any(path.startswith(p) for p in HOSTED_LINK_PATHS + STATIC_PATHS) or path == "/":
             try:
-                server_host = await self._get_server_host(path)
-                analytics.track(server_host, "hosted_link_request", {"path": path})  # type: ignore[reportUnknownMemberType]
+                container = await self._get_server_container(path)
             except Exception as e:
                 logger.error(f"Invalid url: {path}, error: {e}", exc_info=True)
                 return Response(status_code=400, content="Invalid url")
-            return await self._proxy_request(request, server_host)
+            return await self._proxy_request(request, container)
         else:
             return await call_next(request)
 
-    async def _proxy_request(self, request: Request, server_host: str) -> Response:
-        logger.info(f"Proxy hosted link request {request.url.path} to {server_host}")
+    async def _proxy_request(self, request: Request, container: Container) -> Response:
+        path = request.url.path
+        analytics.track(container.hostname, "web_request", {"path": path})  # type: ignore[reportUnknownMemberType]
+        logger.info(f"Proxy web request {path} to container {container.hostname} ({container.ip})")
 
-        url = f"http://{server_host}{request.url.path}"
+        url = f"http://{container.ip}{request.url.path}"
         if request.url.query:
             url += f"?{request.url.query}"
 
@@ -68,9 +69,10 @@ class WebPageProxyMiddleware(BaseHTTPMiddleware):
 
         return "-".join(parts[:-1])
 
-    async def _get_server_host(self, path: str) -> str:
+    async def _get_server_container(self, path: str) -> Container:
         if any(path.startswith(p) for p in STATIC_PATHS) or path == "/":
-            return await ServerManager.get_unassigned_server_host()
+            return await ServerManager.get_unassigned_container()
 
         # hosted link
-        return ServerManager.external_hostname(self._get_hostname_from_link(path))
+        hostname = self._get_hostname_from_link(path)
+        return await ServerManager.get_container_by_hostname(hostname)
