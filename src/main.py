@@ -61,6 +61,7 @@ async def account(mcp_name: str, state: str | None = None):
     if isinstance(result, MCPAuthResponse):
         return RedirectResponse(url=result.auth_url)
     else:
+        # TODO: return a web pageinstead of json
         return JSONResponse(status_code=200, content=result.model_dump(exclude_none=True))
 
 

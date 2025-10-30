@@ -48,18 +48,28 @@ class InMemoryTokenStorage(TokenStorage):
 
 @dataclass
 class OAuthData:
+    """
+    Manage client OAuth flow state.
+    Use asyncio.Event to synchronize the async oauth flow with server.
+    Use one-time token storage to avoid accidentally leaking tokens
+    """
+
     mcp_name: str
+
+    # for /authorize flow
     auth_url: str | None = None
     auth_url_ready: asyncio.Event = field(default_factory=asyncio.Event)
+
+    # for /token flow
     state: str | None = None
     code: str | None = None
     code_ready: asyncio.Event = field(default_factory=asyncio.Event)
+    token_storage: InMemoryTokenStorage = field(default_factory=InMemoryTokenStorage)
     auth_completed: bool = False
+
+    # for retrieving data
     data: MCPDataResponse | None = None
     data_ready: asyncio.Event = field(default_factory=asyncio.Event)
-
-    # one-time token storage for the oauth flow to avoid accidentally leaking tokens
-    token_storage: InMemoryTokenStorage = field(default_factory=InMemoryTokenStorage)
 
     @classmethod
     def get(cls, state: str) -> "OAuthData | None":
@@ -185,8 +195,6 @@ async def handle_auth_code(*, state: str, code: str):
     oauth_data.code = code
     oauth_data.code_ready.set()
 
-    # wait a bit for oauth async flow to complete
-    # await asyncio.sleep(5)
     await oauth_data.data_ready.wait()
 
     return oauth_data
