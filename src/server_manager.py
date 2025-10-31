@@ -155,7 +155,7 @@ class ServerManager:
             )
             logger.info(f"Reloaded {len(mount_dirs)} containers")
 
-            # await cls.backfill_container_pool(docker=docker)
+            await cls.backfill_container_pool(docker=docker)
 
     @classmethod
     async def backfill_container_pool(cls, *, docker: Docker | None = None):
