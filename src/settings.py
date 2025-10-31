@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     DOCKER_PROJECT_NAME: str = ""
     DOCKER_SUBNET_PREFIX: str = ""
 
-    BROWSER_HTTP_PROXY: str = ""
-    BROWSER_HTTP_PROXY_PASSWORD: str = ""
+    BROWSER_TIMEOUT: int = 30_000
+    DEFAULT_PROXY_TYPE: str = ""
+    PROXIES_CONFIG: str = ""
 
     SERVER_IMAGE: str = ""
     SERVER_SENTRY_DSN: str = ""
