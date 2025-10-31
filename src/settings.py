@@ -42,7 +42,6 @@ class Settings(BaseSettings):
     DEFAULT_PROXY_TYPE: str = ""
     PROXIES_CONFIG: str = ""
 
-    SERVER_IMAGE: str = ""
     SERVER_SENTRY_DSN: str = ""
 
     MIN_CONTAINER_POOL_SIZE: int = 5
@@ -55,7 +54,6 @@ class Settings(BaseSettings):
             "HOST_DATA_DIR",
             "GATEWAY_ORIGIN",
             "DOCKER_PROJECT_NAME",
-            "SERVER_IMAGE",
         ]
         for name in required:
             if not getattr(self, name):

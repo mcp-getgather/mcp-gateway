@@ -25,6 +25,8 @@ CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 # the full network name is prefixed by settings.DOCKER_PROJECT_NAME
 DOCKER_NETWORK_NAME = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
 
+SERVER_IMAGE_NAME = f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather"
+
 
 class ContainerMetadata(BaseModel):
     user: AuthUser
@@ -99,7 +101,7 @@ class ServerManager:
     Manages the lifecycle and routing of containers.
 
     === Containers ===
-    - Containers run the settings.SERVER_IMAGE service in the same network as the gateway.
+    - Containers run the SERVER_IMAGE_NAME service in the same network as the gateway.
     - Container identifiers:
       - CONTAINER_ID: the id of the container, auto created by Docker. It changes after reload / restart.
       - HOSTNAME: the unique identifier of the container through the whole lifecycle.
@@ -176,7 +178,7 @@ class ServerManager:
         async with docker_client() as docker:
             source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
             await docker.images.pull(source_image)
-            await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
+            await docker.images.tag(source_image, repo=SERVER_IMAGE_NAME)
 
     @classmethod
     async def _get_containers(
@@ -187,7 +189,7 @@ class ServerManager:
         only_ready: bool = True,
     ) -> list[Container]:
         filters = {
-            "ancestor": [settings.SERVER_IMAGE],
+            "ancestor": [SERVER_IMAGE_NAME],
             "label": [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"],
         }
         if partial_name:
@@ -275,7 +277,7 @@ class ServerManager:
         dst_data_dir = "/app/data"
 
         config: dict[str, Any] = {
-            "Image": settings.SERVER_IMAGE,
+            "Image": SERVER_IMAGE_NAME,
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",

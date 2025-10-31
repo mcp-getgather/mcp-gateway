@@ -19,7 +19,7 @@ async def test_create_new_container():
     await _assert_container_info(
         hostname=hostname,
         config={
-            "Image": settings.SERVER_IMAGE,
+            "Image": f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather",
             "Labels": {"com.docker.compose.project": settings.DOCKER_PROJECT_NAME},
         },
         state={
