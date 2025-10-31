@@ -4,7 +4,7 @@ import random
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import aiofiles
 import aiorwlock
@@ -306,7 +306,7 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            # cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
+            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
