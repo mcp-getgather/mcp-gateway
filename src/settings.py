@@ -37,7 +37,6 @@ class Settings(BaseSettings):
 
     DOCKER_PROJECT_NAME: str = ""
     DOCKER_SUBNET_PREFIX: str = ""
-    DOCKER_DOMAIN: str = ""
 
     BROWSER_HTTP_PROXY: str = ""
     BROWSER_HTTP_PROXY_PASSWORD: str = ""

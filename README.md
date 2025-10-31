@@ -45,7 +45,6 @@ docker build -t mcp-getgather .
 ```
 DOCKER_PROJECT_NAME=getgather
 DOCKER_SUBNET_PREFIX=172.16.0
-DOCKER_DOMAIN=docker
 TS_AUTHKEY=
 
 SERVER_IMAGE=ghcr.io/mcp-getgather/mcp-getgather # or mcp-getgather if built locally

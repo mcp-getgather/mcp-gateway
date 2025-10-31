@@ -186,7 +186,10 @@ class ServerManager:
         docker: Docker | None = None,
         only_ready: bool = True,
     ) -> list[Container]:
-        filters = {"ancestor": [settings.SERVER_IMAGE]}
+        filters = {
+            "ancestor": [settings.SERVER_IMAGE],
+            "label": [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"],
+        }
         if partial_name:
             filters["name"] = [partial_name]
 
