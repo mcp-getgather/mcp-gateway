@@ -11,7 +11,7 @@ import aiorwlock
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
 from nanoid import generate
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.auth import AuthUser
 from src.logs import logger
@@ -26,23 +26,36 @@ class ContainerMetadata(BaseModel):
     user: AuthUser
 
 
-class Container:
+class Container(BaseModel):
     """
     Wrapper around a DockerContainer.
     Container names are [USER_ID]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]
     """
 
-    def __init__(self, container: DockerContainer):
-        self.container = container
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    id: str
+    hostname: str
+    network_name: str
+    ip: str
+
+    container: DockerContainer = Field(exclude=True)
+
+    @classmethod
+    def from_docker(cls, container: DockerContainer, network_name: str) -> "Container":
+        info = container._container  # type: ignore[reportPrivateUsage]
+        return cls(
+            id=container.id[:12],
+            hostname=info["Name"].strip("/").split("-")[-1],
+            ip=info["NetworkSettings"]["Networks"][network_name]["IPAddress"],
+            network_name=network_name,
+            container=container,
+        )
 
     @property
     def info(self) -> dict[str, Any]:
         """Return data of DockerContainer.show()."""
         return self.container._container  # type: ignore[reportPrivateUsage]
-
-    @property
-    def id(self) -> str:
-        return self.container.id[:12]
 
     @property
     def ready(self) -> bool:
@@ -54,11 +67,6 @@ class Container:
             tzinfo=timezone.utc
         )
         return datetime.now(timezone.utc) > started_at + CONTAINER_STARTUP_TIME
-
-    @property
-    def hostname(self) -> str:
-        container_name = self.container._container["Name"].strip("/")  # type: ignore[reportUnknownMemberType]
-        return container_name.split("-")[-1]
 
     @classmethod
     def name_for_user(cls, user: AuthUser | None, hostname: str) -> str:
@@ -108,12 +116,18 @@ class ServerManager:
     @classmethod
     async def get_user_server_host(cls, user: AuthUser) -> str:
         """Get the hostname of the user's container. Assign one if not exists."""
+        container = await cls.get_user_container(user)
+        return cls.external_hostname(container.hostname)
+
+    @classmethod
+    async def get_user_container(cls, user: AuthUser) -> Container:
+        """Get the container of the user. Assign one if not exists."""
         container = await cls._get_container(user.user_id)
         if not container:
             async with docker_client(lock="write") as docker:
                 container = await cls._assign_container(user, docker=docker)
                 await cls.backfill_container_pool(docker=docker)
-        return cls.external_hostname(container.hostname)
+        return container
 
     @classmethod
     async def get_unassigned_server_host(cls) -> str:
@@ -185,7 +199,9 @@ class ServerManager:
                 for container in containers
             ])
 
-        containers = [Container(container) for container in containers]
+        containers = [
+            Container.from_docker(container, cls._network_name()) for container in containers
+        ]
         if only_ready:
             containers = [c for c in containers if c.ready]
         return containers
