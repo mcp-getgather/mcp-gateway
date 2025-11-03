@@ -187,8 +187,10 @@ class ServerManager:
         only_ready: bool = True,
     ) -> list[Container]:
         filters = {
-            "ancestor": [settings.SERVER_IMAGE],
-            "label": [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"],
+            "label": [
+                f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}",
+                f"com.docker.compose.service=mcp-getgather",
+            ]
         }
         if partial_name:
             filters["name"] = [partial_name]
@@ -291,7 +293,10 @@ class ServerManager:
             ],
             "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
             "NetworkingConfig": {"EndpointsConfig": {DOCKER_NETWORK_NAME: {"Aliases": [hostname]}}},
-            "Labels": {"com.docker.compose.project": settings.DOCKER_PROJECT_NAME},
+            "Labels": {
+                "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
+                "com.docker.compose.service": "mcp-getgather",
+            },
         }
 
         # If host is not macOS, container needs the tailscale router to access proxy service,
