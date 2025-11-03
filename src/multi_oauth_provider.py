@@ -21,28 +21,32 @@ OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))
 
 getgather_auth_provider = GetgatherAuthTokenVerifier()
 
+GITHUB_AUTH_SCOPES = ["user"]
 github_auth_provider = GitHubProvider(
     client_id=settings.OAUTH_GITHUB_CLIENT_ID,
     client_secret=settings.OAUTH_GITHUB_CLIENT_SECRET,
     base_url=settings.GATEWAY_ORIGIN,
-    required_scopes=["user"],
+    required_scopes=GITHUB_AUTH_SCOPES,
 )
 
+GOOGLE_AUTH_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+]
 google_auth_provider = GoogleProvider(
     client_id=settings.OAUTH_GOOGLE_CLIENT_ID,
     client_secret=settings.OAUTH_GOOGLE_CLIENT_SECRET,
     base_url=settings.GATEWAY_ORIGIN,
-    required_scopes=[
-        "openid",
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile",
-    ],
+    required_scopes=GOOGLE_AUTH_SCOPES,
 )
+
+MULTI_OAUTH_SCOPES = ["multi_oauth_user"]  # dummy scope to make scope validation work
 
 
 class MultiOAuthTokenVerifier(TokenVerifier):
     def __init__(self):
-        super().__init__(required_scopes=["user"])
+        super().__init__(required_scopes=MULTI_OAUTH_SCOPES)
 
     async def verify_token(self, token: str) -> AccessToken | None:
         if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
@@ -56,7 +60,7 @@ class MultiOAuthTokenVerifier(TokenVerifier):
             if result:
                 result.claims["auth_provider"] = "google"
         if result:  # reset scopes to use default scopes
-            result.scopes = ["user"]
+            result.scopes = MULTI_OAUTH_SCOPES
         return result
 
 
@@ -78,6 +82,7 @@ class MultiOAuthProvider(OAuthProxy):
             issuer_url=settings.GATEWAY_ORIGIN,
             allowed_client_redirect_uris=allowed_client_redirect_uris,
             client_storage=client_storage,
+            valid_scopes=GITHUB_AUTH_SCOPES + GOOGLE_AUTH_SCOPES,
         )
 
         self._auth_providers: dict[str, OAuthProxy] = {}  # client_id -> auth provider
@@ -89,7 +94,7 @@ class MultiOAuthProvider(OAuthProxy):
         return provider
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
-        client_info.scope = None  # strip scopes to use default scopes
+        client_info.scope = " ".join(GITHUB_AUTH_SCOPES + GOOGLE_AUTH_SCOPES)
         return await super().register_client(client_info)
 
     async def authorize(
