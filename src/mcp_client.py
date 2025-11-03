@@ -147,7 +147,7 @@ async def _auth_and_connect(
             redirect_uris=[AnyUrl(f"{settings.GATEWAY_ORIGIN}/client/auth/callback")],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
-            scope="user",
+            scope=None,  # let server decide the default scopes which is different among auth providers (e.g., github and google)
         ),
         storage=oauth_data.token_storage,
         redirect_handler=handle_redirect,
