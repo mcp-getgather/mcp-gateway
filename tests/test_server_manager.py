@@ -20,7 +20,10 @@ async def test_create_new_container():
         hostname=hostname,
         config={
             "Image": settings.SERVER_IMAGE,
-            "Labels": {"com.docker.compose.project": settings.DOCKER_PROJECT_NAME},
+            "Labels": {
+                "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
+                "com.docker.compose.service": "mcp-getgather",
+            },
         },
         state={
             "Status": "running",
