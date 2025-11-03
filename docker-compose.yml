@@ -1,7 +1,7 @@
 name: ${DOCKER_PROJECT_NAME}
 
 networks:
-  internal-net: # keep consistent with DOCKER_NETWORK_NAME in .env
+  internal-net:
     driver: bridge
     ipam:
       config:
@@ -12,7 +12,7 @@ services:
   tailscale:
     image: tailscale/tailscale:latest
     container_name: ${DOCKER_PROJECT_NAME}-tailscale-subnet-router
-    hostname: ${DOCKER_DOMAIN}-router
+    hostname: ${DOCKER_PROJECT_NAME}-router
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -32,21 +32,3 @@ services:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
     command: sh -c "sleep 5 && iptables -t nat -A POSTROUTING -s ${DOCKER_SUBNET_PREFIX}.0/24 -o tailscale0 -j MASQUERADE && exec /usr/local/bin/containerboot"
-
-  coredns:
-    image: coredns/coredns:latest
-    container_name: ${DOCKER_PROJECT_NAME}-coredns
-    command: -conf /etc/coredns/Corefile
-    expose:
-      - "53/udp"
-      - "53/tcp"
-    volumes:
-      - ./coredns:/etc/coredns
-    networks:
-      internal-net:
-        ipv4_address: ${DOCKER_SUBNET_PREFIX}.3
-    restart: unless-stopped
-
-volumes:
-  caddy-data:
-  caddy-config:
