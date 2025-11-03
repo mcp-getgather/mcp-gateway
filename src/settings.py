@@ -9,7 +9,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
-OAUTH_PROVIDER_TYPE = Literal["github", "google"]
+OAUTH_PROVIDER_TYPE = Literal["github", "google", "getgather"]
 
 
 class Settings(BaseSettings):
@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     OAUTH_GOOGLE_CLIENT_ID: str = ""
     OAUTH_GOOGLE_CLIENT_SECRET: str = ""
 
+    GETGATHER_CLIENT_IDS: frozenset[str] = frozenset()
+
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
 
@@ -50,11 +52,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self):
-        required = [
-            "HOST_DATA_DIR",
-            "GATEWAY_ORIGIN",
-            "DOCKER_PROJECT_NAME",
-        ]
+        required = ["HOST_DATA_DIR", "GATEWAY_ORIGIN", "DOCKER_PROJECT_NAME"]
         for name in required:
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
