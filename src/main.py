@@ -5,11 +5,13 @@ from datetime import datetime
 import logfire
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.auth import setup_mcp_auth
 from src.logs import logger, setup_logging
 from src.mcp import get_mcp_apps
+from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
 from src.server_manager import ServerManager
 from src.settings import FRONTEND_DIR, settings
 from src.web_page_proxy import WebPageProxyMiddleware
@@ -50,7 +52,25 @@ async def reload_containers(request: Request):
     token = request.headers.get("x-admin-token")
     if not token or token != settings.ADMIN_API_TOKEN:
         raise HTTPException(status_code=401, detail="Missing or invalid admin token")
+
+    await ServerManager.pull_server_image()
     await ServerManager.reload_containers(state="all")
+
+
+@app.get("/account/{mcp_name}")
+async def account(mcp_name: str, state: str | None = None):
+    result = await auth_and_connect(mcp_name, state)
+    if isinstance(result, MCPAuthResponse):
+        return RedirectResponse(url=result.auth_url)
+    else:
+        # TODO: return a web pageinstead of json
+        return JSONResponse(status_code=200, content=result.model_dump(exclude_none=True))
+
+
+@app.get("/client/auth/callback")
+async def client_auth_callback(code: str, state: str):
+    oauth_data = await handle_auth_code(state=state, code=code)
+    return RedirectResponse(url=f"/account/{oauth_data.mcp_name}?state={oauth_data.state}")
 
 
 async def main():
@@ -64,7 +84,6 @@ async def main():
         segment_write_key=settings.SEGMENT_WRITE_KEY,
     )
 
-    await ServerManager.pull_server_image()
     await ServerManager.reload_containers()
 
     app.state.mcp_apps = await get_mcp_apps()

@@ -14,9 +14,12 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
+from src.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
 from src.settings import OAUTH_PROVIDER_TYPE, settings
 
 OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))
+
+getgather_auth_provider = GetgatherAuthTokenVerifier()
 
 github_auth_provider = GitHubProvider(
     client_id=settings.OAUTH_GITHUB_CLIENT_ID,
@@ -42,7 +45,9 @@ class MultiOAuthTokenVerifier(TokenVerifier):
         super().__init__(required_scopes=["user"])
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        if token.startswith("gho_"):
+        if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
+            return await getgather_auth_provider.verify_token(token)
+        elif token.startswith("gho_"):
             result = await github_auth_provider.verify_token(token)
             if result:
                 result.claims["auth_provider"] = "github"

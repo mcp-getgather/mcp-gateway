@@ -48,7 +48,7 @@ async def test_create_new_container():
             "RW": True,
             "Propagation": "rprivate",
         },
-        network_aliases=[f"{hostname}.{settings.DOCKER_DOMAIN}"],
+        network_aliases=[f"{hostname}"],
     )
     await _assert_mount_dir(hostname)
 
@@ -93,7 +93,7 @@ async def test_assign_container():
             "RW": True,
             "Propagation": "rprivate",
         },
-        network_aliases=[f"{hostname}.{settings.DOCKER_DOMAIN}"],
+        network_aliases=[f"{hostname}"],
     )
     await _assert_mount_dir(hostname, user)
 
@@ -160,7 +160,7 @@ async def _assert_container_info(
     if mount:
         assert_that(info["Mounts"]).contains(mount)
     if network_aliases:
-        network_name = f"{settings.DOCKER_PROJECT_NAME}_{settings.DOCKER_NETWORK_NAME}"
+        network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
         assert_that(info["NetworkSettings"]["Networks"][network_name]["Aliases"]).contains(
             *network_aliases
         )
@@ -189,7 +189,7 @@ def _assert_same_container(container_1: Container, container_2: Container) -> No
         for key in ["SandboxID", "SandboxKey"]:
             info["NetworkSettings"].pop(key)
 
-        network_name = f"{settings.DOCKER_PROJECT_NAME}_{settings.DOCKER_NETWORK_NAME}"
+        network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
         for key in ["EndpointID", "MacAddress"]:
             info["NetworkSettings"]["Networks"][network_name].pop(key)
         info["NetworkSettings"]["Networks"][network_name]["DNSNames"].remove(container.id)

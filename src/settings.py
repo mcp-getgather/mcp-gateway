@@ -9,7 +9,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
-OAUTH_PROVIDER_TYPE = Literal["github", "google"]
+OAUTH_PROVIDER_TYPE = Literal["github", "google", "getgather"]
 
 
 class Settings(BaseSettings):
@@ -32,13 +32,13 @@ class Settings(BaseSettings):
     OAUTH_GOOGLE_CLIENT_ID: str = ""
     OAUTH_GOOGLE_CLIENT_SECRET: str = ""
 
+    GETGATHER_CLIENT_IDS: frozenset[str] = frozenset()
+
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
 
     DOCKER_PROJECT_NAME: str = ""
-    DOCKER_NETWORK_NAME: str = ""
     DOCKER_SUBNET_PREFIX: str = ""
-    DOCKER_DOMAIN: str = ""
 
     BROWSER_HTTP_PROXY: str = ""
     BROWSER_HTTP_PROXY_PASSWORD: str = ""
@@ -56,7 +56,6 @@ class Settings(BaseSettings):
             "HOST_DATA_DIR",
             "GATEWAY_ORIGIN",
             "DOCKER_PROJECT_NAME",
-            "DOCKER_NETWORK_NAME",
             "SERVER_IMAGE",
         ]
         for name in required:
