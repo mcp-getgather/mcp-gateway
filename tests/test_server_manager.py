@@ -19,7 +19,7 @@ async def test_create_new_container():
     await _assert_container_info(
         hostname=hostname,
         config={
-            "Image": settings.SERVER_IMAGE,
+            "Image": f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather",
             "Labels": {
                 "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
                 "com.docker.compose.service": "mcp-getgather",
@@ -31,9 +31,9 @@ async def test_create_new_container():
         },
         env=[
             f"LOG_LEVEL={settings.LOG_LEVEL}",
-            "BROWSER_TIMEOUT=300000",
-            f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
-            f"BROWSER_HTTP_PROXY_PASSWORD={settings.BROWSER_HTTP_PROXY_PASSWORD}",
+            f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
+            f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
+            f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
             f"OPENAI_API_KEY={settings.OPENAI_API_KEY}",
             f"SENTRY_DSN={settings.SERVER_SENTRY_DSN}",
             f"DATA_DIR=/app/data",

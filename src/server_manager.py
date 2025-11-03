@@ -25,6 +25,8 @@ CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 # the full network name is prefixed by settings.DOCKER_PROJECT_NAME
 DOCKER_NETWORK_NAME = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
 
+SERVER_IMAGE_NAME = f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather"
+
 
 class ContainerMetadata(BaseModel):
     user: AuthUser
@@ -99,7 +101,7 @@ class ServerManager:
     Manages the lifecycle and routing of containers.
 
     === Containers ===
-    - Containers run the settings.SERVER_IMAGE service in the same network as the gateway.
+    - Containers run the SERVER_IMAGE_NAME service in the same network as the gateway.
     - Container identifiers:
       - CONTAINER_ID: the id of the container, auto created by Docker. It changes after reload / restart.
       - HOSTNAME: the unique identifier of the container through the whole lifecycle.
@@ -176,7 +178,7 @@ class ServerManager:
         async with docker_client() as docker:
             source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
             await docker.images.pull(source_image)
-            await docker.images.tag(source_image, repo=settings.SERVER_IMAGE)
+            await docker.images.tag(source_image, repo=SERVER_IMAGE_NAME)
 
     @classmethod
     async def _get_containers(
@@ -277,14 +279,14 @@ class ServerManager:
         dst_data_dir = "/app/data"
 
         config: dict[str, Any] = {
-            "Image": settings.SERVER_IMAGE,
+            "Image": SERVER_IMAGE_NAME,
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
                 f"LOG_LEVEL={settings.LOG_LEVEL}",
-                "BROWSER_TIMEOUT=300000",
-                f"BROWSER_HTTP_PROXY={settings.BROWSER_HTTP_PROXY}",
-                f"BROWSER_HTTP_PROXY_PASSWORD={settings.BROWSER_HTTP_PROXY_PASSWORD}",
+                f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
+                f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
+                f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
                 f"OPENAI_API_KEY={settings.OPENAI_API_KEY}",
                 f"SENTRY_DSN={settings.SERVER_SENTRY_DSN}",
                 f"DATA_DIR={dst_data_dir}",

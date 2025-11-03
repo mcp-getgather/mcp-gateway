@@ -11,7 +11,7 @@ from aiodocker.networks import DockerNetwork
 
 from src import server_manager
 from src.logs import logger
-from src.server_manager import ServerManager
+from src.server_manager import SERVER_IMAGE_NAME, ServerManager
 from src.settings import ENV_FILE, settings
 
 
@@ -86,7 +86,7 @@ async def _cleanup_docker(scope: Literal["function", "session"]):
     label_filter = [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"]
     container_filters = {"label": label_filter}
     if scope == "function":
-        container_filters["ancestor"] = [settings.SERVER_IMAGE]
+        container_filters["ancestor"] = [SERVER_IMAGE_NAME]
     containers = await docker.containers.list(all=True, filters=container_filters)  # type: ignore[reportUnknownMemberType]
     for container in containers:
         await container.delete(force=True)  # type: ignore[reportUnknownMemberType]
@@ -98,7 +98,7 @@ async def _cleanup_docker(scope: Literal["function", "session"]):
             await network.delete()
 
         try:
-            await docker.images.delete(settings.SERVER_IMAGE, force=True)
+            await docker.images.delete(SERVER_IMAGE_NAME, force=True)
         except:
             pass  # ignore image not found error
 

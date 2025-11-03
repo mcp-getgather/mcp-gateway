@@ -24,5 +24,4 @@ jobs:
           GATEWAY_ORIGIN: http://localhost:9000
           DOCKER_PROJECT_NAME: getgather-ci
           DOCKER_SUBNET_PREFIX: 172.24.0
-          SERVER_IMAGE: getgather-ci-mcp-getgather
           HOST_DATA_DIR: ./data
