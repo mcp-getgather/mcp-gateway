@@ -280,6 +280,7 @@ class ServerManager:
 
         config: dict[str, Any] = {
             "Image": SERVER_IMAGE_NAME,
+            "User": "root",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
