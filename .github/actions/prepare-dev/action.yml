@@ -19,7 +19,11 @@ runs:
       shell: bash
       run: npm install
 
-    - name: Set up Podman in rootful mode
+    - name: Install Podman compose
+      shell: bash
+      run: pipx install podman-compose
+
+    - name: Set up Podman
       shell: bash
       run: |
         # Start podman socket service
