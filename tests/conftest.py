@@ -46,10 +46,20 @@ def reset_container_lock():
 
 
 async def _run_cmd(cmd: str):
+    # Ensure compose environment variables are explicitly set
+    import os
+    env = os.environ.copy()
+    # Explicitly set compose-related variables if not already set
+    if "DOCKER_PROJECT_NAME" not in env:
+        env["DOCKER_PROJECT_NAME"] = settings.DOCKER_PROJECT_NAME
+    if "DOCKER_SUBNET_PREFIX" not in env:
+        env["DOCKER_SUBNET_PREFIX"] = settings.DOCKER_SUBNET_PREFIX
+
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
     output, error = await process.communicate()
     exit_status = process.returncode
@@ -68,10 +78,10 @@ async def _init_docker():
     """
     await ServerManager.pull_server_image()
 
-    cmd = f"podman compose" if settings.CONTAINER_ENGINE == "podman" else "docker compose"
+    cmd = f"podman-compose" if settings.CONTAINER_ENGINE == "podman" else "docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
-    cmd += " up -d"
+    cmd += " up"  # -d"
     await _run_cmd(cmd)
 
 

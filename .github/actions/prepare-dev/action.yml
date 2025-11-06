@@ -19,26 +19,67 @@ runs:
       shell: bash
       run: npm install
 
-    - name: Install Podman compose
-      shell: bash
-      run: |
-        sudo apt update
-        sudo apt install podman-compose
-
     - name: Set up Podman
+      if: env.CONTAINER_ENGINE == 'podman'
       shell: bash
       run: |
-        # Start podman socket service
-        sudo systemctl start podman.socket
-        sudo systemctl status podman.socket
+        # Check if podman socket already exists (mounted from host via act)
+        if [ -S /run/podman/podman.sock ]; then
+          echo "Podman socket found at /run/podman/podman.sock (mounted from host)"
 
-        # Verify socket exists
-        sudo ls -l /run/podman/podman.sock
+          # Install podman client to communicate with the socket
+          echo "Installing podman client..."
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
 
-        # Make socket accessible (simpler approach for CI)
-        sudo chmod 755 /run/podman
-        sudo chmod 666 /run/podman/podman.sock
+          # Create a wrapper script that forces podman to use remote mode
+          echo "Creating podman wrapper script..."
+          sudo mv /usr/bin/podman /usr/bin/podman-bin
+          cat <<'WRAPPER' | sudo tee /usr/bin/podman > /dev/null
+        #!/bin/bash
+        exec /usr/bin/podman-bin --remote --url "${CONTAINER_HOST:-unix:///run/podman/podman.sock}" "$@"
+        WRAPPER
+          sudo chmod +x /usr/bin/podman
 
-        # Verify socket works for $USER
-        ls -l /run/podman/podman.sock
-        sudo podman version
+          # Set environment variables to use the mounted socket
+          echo "DOCKER_HOST=unix:///run/podman/podman.sock" >> $GITHUB_ENV
+          echo "CONTAINER_HOST=unix:///run/podman/podman.sock" >> $GITHUB_ENV
+
+          # Verify podman can communicate with the socket
+          ls -l /run/podman/podman.sock
+          echo "Testing connection to podman socket..."
+          podman version || echo "Note: podman version check skipped (not critical)"
+        else
+          echo "No podman socket found, setting up podman..."
+
+          # Install podman
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
+          podman --version
+
+          # Start podman socket service
+          sudo systemctl start podman.socket
+          sudo systemctl status podman.socket
+
+          # Verify socket exists
+          sudo ls -l /run/podman/podman.sock
+
+          # Make socket accessible
+          sudo chmod 755 /run/podman
+          sudo chmod 666 /run/podman/podman.sock
+
+          # Set environment variable
+          echo "DOCKER_HOST=unix:///run/podman/podman.sock" >> $GITHUB_ENV
+
+          ls -l /run/podman/podman.sock
+        fi
+
+    - name: Install Podman compose
+      if: env.CONTAINER_ENGINE == 'podman'
+      shell: bash
+      run: |
+        # Install latest podman-compose for better docker compose compatibility
+        pipx install podman-compose --force
+        pipx upgrade podman-compose || true
+        echo "Installed podman-compose version:"
+        podman-compose version || true

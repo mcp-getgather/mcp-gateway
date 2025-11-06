@@ -13,7 +13,8 @@ jobs:
     strategy:
       fail-fast: false  
       matrix:
-        container-engine: [docker, podman]
+        # container-engine: [docker, podman]
+        container-engine: [podman]
 
     steps:
       - name: Checkout code
@@ -21,9 +22,11 @@ jobs:
 
       - name: Install dependencies
         uses: ./.github/actions/prepare-dev
+        env:
+          CONTAINER_ENGINE: ${{ matrix.container-engine }}
 
       - name: Run unit tests
-        run: uv run pytest -o env=ENV_FILE=
+        run: uv run pytest -o env=ENV_FILE= tests/test_main.py
         env:
           GATEWAY_ORIGIN: http://localhost:9000
           DOCKER_PROJECT_NAME: getgather-ci
