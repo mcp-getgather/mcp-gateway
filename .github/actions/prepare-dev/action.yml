@@ -30,6 +30,7 @@ runs:
         sudo ls -l /run/podman/podman.sock
 
         # Make socket accessible (simpler approach for CI)
+        sudo chmod 755 /run/podman
         sudo chmod 666 /run/podman/podman.sock
 
         # Verify socket works for $USER
