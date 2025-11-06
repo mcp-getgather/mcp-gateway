@@ -15,6 +15,8 @@ OAUTH_PROVIDER_TYPE = Literal["github", "google", "getgather"]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_ignore_empty=True, extra="ignore")
 
+    CONTAINER_ENGINE: Literal["docker", "podman"] = "docker"
+
     ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
     GIT_REV: str = "main"

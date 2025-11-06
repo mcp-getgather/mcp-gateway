@@ -18,12 +18,9 @@ async def test_create_new_container():
 
     await _assert_container_info(
         hostname=hostname,
-        config={
-            "Image": f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather",
-            "Labels": {
-                "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
-                "com.docker.compose.service": "mcp-getgather",
-            },
+        labels={
+            "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
+            "com.docker.compose.service": "mcp-getgather",
         },
         state={
             "Status": "running",
@@ -44,7 +41,6 @@ async def test_create_new_container():
             "Type": "bind",
             "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
             "Destination": "/app/data",
-            "Mode": "rw",
             "RW": True,
             "Propagation": "rprivate",
         },
@@ -89,7 +85,6 @@ async def test_assign_container():
             "Type": "bind",
             "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
             "Destination": "/app/data",
-            "Mode": "rw",
             "RW": True,
             "Propagation": "rprivate",
         },
@@ -137,7 +132,7 @@ async def _assert_container_info(
     *,
     hostname: str,
     user: AuthUser | None = None,
-    config: dict[str, Any] | None = None,
+    labels: dict[str, str] | None = None,
     state: dict[str, str | bool] | None = None,
     env: list[str] | None = None,
     mount: dict[str, str | bool] | None = None,
@@ -151,14 +146,14 @@ async def _assert_container_info(
 
     assert info["Name"] == f"/{container_name}"
 
-    if config:
-        assert_that(config).is_subset_of(info["Config"])
+    if labels:
+        assert info["Config"]["Labels"] == labels
     if state:
         assert_that(state).is_subset_of(info["State"])
     if env:
         assert_that(info["Config"]["Env"]).contains(*env)
     if mount:
-        assert_that(info["Mounts"]).contains(mount)
+        assert_that(mount).is_subset_of(info["Mounts"][0])
     if network_aliases:
         network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
         assert_that(info["NetworkSettings"]["Networks"][network_name]["Aliases"]).contains(
@@ -186,13 +181,17 @@ def _assert_same_container(container_1: Container, container_2: Container) -> No
         }
 
         info["Config"].pop("Hostname")
+        info["Config"]["Env"] = sorted(info["Config"]["Env"])
+
         for key in ["SandboxID", "SandboxKey"]:
             info["NetworkSettings"].pop(key)
 
         network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
-        for key in ["EndpointID", "MacAddress"]:
+        for key in ["EndpointID", "MacAddress", "DNSNames", "IPAddress"]:
             info["NetworkSettings"]["Networks"][network_name].pop(key)
-        info["NetworkSettings"]["Networks"][network_name]["DNSNames"].remove(container.id)
+
+        if container.id in info["NetworkSettings"]["Networks"][network_name]["Aliases"]:
+            info["NetworkSettings"]["Networks"][network_name]["Aliases"].remove(container.id)
 
         return info
 

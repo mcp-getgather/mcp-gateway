@@ -73,7 +73,7 @@ async def client_auth_callback(code: str, state: str):
     return RedirectResponse(url=f"/account/{oauth_data.mcp_name}?state={oauth_data.state}")
 
 
-async def main():
+async def create_server():
     """
     Start mcp-getgather containers, fetch MCP routes,
     then set up the FastAPI server and start it.
@@ -106,6 +106,11 @@ async def main():
         reload=False,  # reload is handled by nodemon since app needs dynamic set up
     )
     server = uvicorn.Server(config)
+    return server
+
+
+async def main():
+    server = await create_server()
     await server.serve()
 
 
