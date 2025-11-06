@@ -18,3 +18,21 @@ runs:
     - name: Install npm dependencies
       shell: bash
       run: npm install
+
+    - name: Set up Podman in rootful mode
+      run: |
+        # Start podman socket service
+        sudo systemctl start podman.socket
+        sudo systemctl status podman.socket
+
+        # Verify socket exists
+        ls -l /run/podman/podman.sock
+
+        # Add runner user to podman group
+        sudo groupadd -f podman
+        sudo usermod -aG podman $USER
+        sudo chown root:podman /run/podman/podman.sock
+        sudo chmod 660 /run/podman/podman.sock
+
+        # Verify podman works
+        sudo podman version
