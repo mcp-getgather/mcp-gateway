@@ -20,6 +20,7 @@ runs:
       run: npm install
 
     - name: Set up Podman in rootful mode
+      shell: bash
       run: |
         # Start podman socket service
         sudo systemctl start podman.socket
