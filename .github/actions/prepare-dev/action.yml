@@ -21,7 +21,9 @@ runs:
 
     - name: Install Podman compose
       shell: bash
-      run: sudo apt install podman-compose
+      run: |
+        sudo apt update
+        sudo apt install podman-compose
 
     - name: Set up Podman
       shell: bash
