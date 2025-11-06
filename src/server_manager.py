@@ -1,19 +1,18 @@
 import asyncio
 import platform
 import random
-from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import aiofiles
-import aiorwlock
 from aiodocker import Docker
 from aiodocker.containers import DockerContainer
 from nanoid import generate
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.auth import AuthUser
+from src.docker import docker_client
 from src.logs import logger
 from src.settings import settings
 
@@ -175,8 +174,9 @@ class ServerManager:
 
     @classmethod
     async def pull_server_image(cls):
+        source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
+        logger.info(f"Pulling server image from {source_image}")
         async with docker_client() as docker:
-            source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
             await docker.images.pull(source_image)
             await docker.images.tag(source_image, repo=SERVER_IMAGE_NAME)
 
@@ -294,7 +294,10 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
+            "HostConfig": {
+                "Binds": [f"{src_data_dir}:{dst_data_dir}:rw"],
+                "CapAdd": ["NET_BIND_SERVICE"],
+            },
             "NetworkingConfig": {"EndpointsConfig": {DOCKER_NETWORK_NAME: {"Aliases": [hostname]}}},
             "Labels": {
                 "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
@@ -313,7 +316,7 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
+            config["HostConfig"]["CapAdd"].extend(["NET_ADMIN"])
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
@@ -369,48 +372,3 @@ class ServerManager:
     @classmethod
     def _user_server_host(cls, user: AuthUser) -> str:
         return f"{user.user_id}.{user.auth_provider}"
-
-
-CONTAINER_LOCK = aiorwlock.RWLock()
-
-
-@asynccontextmanager
-async def docker_client(
-    client: Docker | None = None, *, lock: Literal["read", "write"] | None = None
-):
-    nested = client is not None
-    _client = client or Docker()
-    nested_exceptions: list[Exception] = []
-
-    try:
-        if not nested:  # only acquire lock if at the outer level
-            if lock == "read":
-                await CONTAINER_LOCK.reader_lock.acquire()
-            elif lock == "write":
-                await CONTAINER_LOCK.writer_lock.acquire()
-
-        yield _client
-    except Exception as e:
-        # collect all exceptions in nested session, so it doesn't break others
-        # and raise them together in the 'finally' block
-        logger.exception(f"Docker operation failed: {e}")
-        nested_exceptions.append(e)
-    finally:
-        if nested:
-            return
-
-        await _client.close()
-        if lock == "read":
-            CONTAINER_LOCK.reader_lock.release()
-        elif lock == "write":
-            CONTAINER_LOCK.writer_lock.release()
-
-        if not nested_exceptions:
-            return
-
-        if len(nested_exceptions) == 1:
-            raise nested_exceptions[0]
-        else:
-            raise ExceptionGroup(
-                "Multiple exceptions occurred during docker operations", nested_exceptions
-            )
