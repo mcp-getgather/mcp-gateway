@@ -320,7 +320,7 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            config["HostConfig"]["CapAdd"].append("NET_BIND_SERVICE")
+            config["HostConfig"]["CapAdd"].extend(["NET_ADMIN", "NET_BIND_SERVICE"])
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
