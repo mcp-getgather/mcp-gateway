@@ -129,6 +129,14 @@ async def _assign_container(user: AuthUser) -> None:
     start_time_seconds = 10 if platform.system() != "Darwin" else 0
     await asyncio.sleep(start_time_seconds)
 
+    async with docker_client() as docker:
+        containers = await docker.containers.list()  # type: ignore[reportUnknownMemberType]
+        from rich import print
+
+        for container in containers:
+            logs = await container.log(stdout=True, stderr=True, tail=100)  # type: ignore[reportUnknownMemberType]
+            print(logs)
+
     with patch("src.server_manager.CONTAINER_STARTUP_TIME", timedelta(seconds=start_time_seconds)):
         await ServerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
 
