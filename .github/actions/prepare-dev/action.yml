@@ -18,3 +18,10 @@ runs:
     - name: Install npm dependencies
       shell: bash
       run: npm install
+
+    - name: Pull mcp-getgather image
+      shell: bash
+      run: |
+        docker image pull ghcr.io/mcp-getgather/mcp-getgather
+        DIGEST=$(docker inspect ghcr.io/mcp-getgather/mcp-getgather:latest | jq -r '.[0].Id')
+        echo "Using mcp-getgather image digest: $DIGEST"
