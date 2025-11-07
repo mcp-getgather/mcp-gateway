@@ -317,6 +317,12 @@ class ServerManager:
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
         logger.info(f"Created or reloaded server hostname: {hostname}, id: {container.id[:12]}")
+
+        await asyncio.sleep(10)
+        logs = await container.log(stdout=True, stderr=True, tail=100)  # type: ignore[reportUnknownMemberType]
+        from rich import print
+
+        print(logs)
         return hostname
 
     @classmethod
