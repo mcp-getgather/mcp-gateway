@@ -293,7 +293,10 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
+            "HostConfig": {
+                "Binds": [f"{src_data_dir}:{dst_data_dir}:rw"],
+                "CapAdd": ["NET_BIND_SERVICE"],
+            },
             "NetworkingConfig": {"EndpointsConfig": {DOCKER_NETWORK_NAME: {"Aliases": [hostname]}}},
             "Labels": {
                 "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
@@ -312,7 +315,7 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
+            config["HostConfig"]["CapAdd"].append("NET_ADMIN")
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
