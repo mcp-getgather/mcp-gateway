@@ -23,5 +23,7 @@ runs:
       shell: bash
       run: |
         docker image pull ghcr.io/mcp-getgather/mcp-getgather
+        docker inspect ghcr.io/mcp-getgather/mcp-getgather
+        docker inspect ghcr.io/mcp-getgather/mcp-getgather:latest
         DIGEST=$(docker inspect ghcr.io/mcp-getgather/mcp-getgather:latest | jq -r '.[0].Descriptor.digest')
         echo "Using mcp-getgather image digest: $DIGEST"
