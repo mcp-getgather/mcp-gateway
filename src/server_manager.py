@@ -331,7 +331,15 @@ class ServerManager:
 
             if platform.system() != "Darwin":
                 exec = await container.container.exec(
-                    ["ip", "route", "add", "100.64.0.0/10", "via", cls._tailscale_router_ip()],
+                    [
+                        "sudo",
+                        "ip",
+                        "route",
+                        "add",
+                        "100.64.0.0/10",
+                        "via",
+                        cls._tailscale_router_ip(),
+                    ],
                     privileged=True,
                 )
                 await exec.start(detach=True)
