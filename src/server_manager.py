@@ -280,7 +280,7 @@ class ServerManager:
 
         config: dict[str, Any] = {
             "Image": SERVER_IMAGE_NAME,
-            "User": "1000:1000",
+            "User": "root",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
@@ -309,23 +309,15 @@ class ServerManager:
             config.update({
                 "Entrypoint": ["/bin/sh", "-c"],
                 "Cmd": [
-                    f"sudo ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
+                    f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
                     " exec /app/entrypoint.sh"
                 ],
             })
-            cast(dict[str, Any], config["HostConfig"]).update({
-                "CapAdd": ["NET_ADMIN", "NET_BIND_SERVICE"]
-            })
+            cast(dict[str, Any], config["HostConfig"]).update({"CapAdd": ["NET_ADMIN"]})
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
         logger.info(f"Created or reloaded server hostname: {hostname}, id: {container.id[:12]}")
-
-        await asyncio.sleep(10)
-        logs = await container.log(stdout=True, stderr=True, tail=100)  # type: ignore[reportUnknownMemberType]
-        from rich import print
-
-        print(logs)
         return hostname
 
     @classmethod
@@ -340,7 +332,6 @@ class ServerManager:
 
             if platform.system() != "Darwin":
                 exec = await container.container.exec([
-                    "sudo",
                     "ip",
                     "route",
                     "add",
