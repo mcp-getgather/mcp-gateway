@@ -330,18 +330,15 @@ class ServerManager:
             await cls._write_metadata(container, user)
 
             if platform.system() != "Darwin":
-                exec = await container.container.exec(
-                    [
-                        "sudo",
-                        "ip",
-                        "route",
-                        "add",
-                        "100.64.0.0/10",
-                        "via",
-                        cls._tailscale_router_ip(),
-                    ],
-                    privileged=True,
-                )
+                exec = await container.container.exec([
+                    "sudo",
+                    "ip",
+                    "route",
+                    "add",
+                    "100.64.0.0/10",
+                    "via",
+                    cls._tailscale_router_ip(),
+                ])
                 await exec.start(detach=True)
 
             logger.info(f"Assigned container {container.id} to {user.user_id}")
