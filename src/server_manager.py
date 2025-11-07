@@ -280,6 +280,7 @@ class ServerManager:
 
         config: dict[str, Any] = {
             "Image": SERVER_IMAGE_NAME,
+            "User": "1000:1000",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
@@ -293,10 +294,7 @@ class ServerManager:
                 f"HOSTNAME={hostname}",
                 "PORT=80",
             ],
-            "HostConfig": {
-                "Binds": [f"{src_data_dir}:{dst_data_dir}:rw"],
-                "CapAdd": ["NET_BIND_SERVICE"],
-            },
+            "HostConfig": {"Binds": [f"{src_data_dir}:{dst_data_dir}:rw"]},
             "NetworkingConfig": {"EndpointsConfig": {DOCKER_NETWORK_NAME: {"Aliases": [hostname]}}},
             "Labels": {
                 "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
@@ -315,7 +313,9 @@ class ServerManager:
                     " exec /app/entrypoint.sh"
                 ],
             })
-            config["HostConfig"]["CapAdd"].append("NET_ADMIN")
+            cast(dict[str, Any], config["HostConfig"]).update({
+                "CapAdd": ["NET_ADMIN", "NET_BIND_SERVICE"]
+            })
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
