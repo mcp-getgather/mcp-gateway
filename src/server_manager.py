@@ -280,7 +280,6 @@ class ServerManager:
 
         config: dict[str, Any] = {
             "Image": SERVER_IMAGE_NAME,
-            "User": "root",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
@@ -309,7 +308,7 @@ class ServerManager:
             config.update({
                 "Entrypoint": ["/bin/sh", "-c"],
                 "Cmd": [
-                    f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
+                    f"sudo ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
                     " exec /app/entrypoint.sh"
                 ],
             })
