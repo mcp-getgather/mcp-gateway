@@ -280,6 +280,7 @@ class ServerManager:
 
         config: dict[str, Any] = {
             "Image": SERVER_IMAGE_NAME,
+            "User": "root",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
                 f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
@@ -308,8 +309,7 @@ class ServerManager:
             config.update({
                 "Entrypoint": ["/bin/sh", "-c"],
                 "Cmd": [
-                    "apt update && apt install -y iproute2 &&"
-                    f" ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
+                    f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
                     " exec /app/entrypoint.sh"
                 ],
             })
@@ -331,17 +331,14 @@ class ServerManager:
             await cls._write_metadata(container, user)
 
             if platform.system() != "Darwin":
-                exec = await container.container.exec(
-                    [
-                        "ip",
-                        "route",
-                        "add",
-                        "100.64.0.0/10",
-                        "via",
-                        cls._tailscale_router_ip(),
-                    ],
-                    privileged=True,
-                )
+                exec = await container.container.exec([
+                    "ip",
+                    "route",
+                    "add",
+                    "100.64.0.0/10",
+                    "via",
+                    cls._tailscale_router_ip(),
+                ])
                 await exec.start(detach=True)
 
             logger.info(f"Assigned container {container.id} to {user.user_id}")
