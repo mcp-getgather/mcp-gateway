@@ -29,7 +29,7 @@ jobs:
         run: uv run pytest -o env=ENV_FILE=
         env:
           GATEWAY_ORIGIN: http://localhost:9000
-          DOCKER_PROJECT_NAME: getgather-ci
-          DOCKER_SUBNET_PREFIX: 172.24.0
+          CONTAINER_PROJECT_NAME: getgather-ci
+          CONTAINER_SUBNET_PREFIX: 172.24.0
           HOST_DATA_DIR: ./data
           CONTAINER_ENGINE: ${{ matrix.container-engine }}
