@@ -18,7 +18,7 @@ async def docker_client(
     client: Docker | None = None, *, lock: Literal["read", "write"] | None = None
 ):
     nested = client is not None
-    _client = client or Docker(url=get_docker_socket())
+    _client = client or Docker(url=get_container_engine_socket())
     nested_exceptions: list[Exception] = []
 
     try:
@@ -69,7 +69,7 @@ async def delete_container(container: DockerContainer, *, client: Docker | None 
                 logger.warning(f"Expected error deleting container {container.id}: {e}")
 
 
-def get_docker_socket():
+def get_container_engine_socket():
     if settings.CONTAINER_ENGINE == "docker":
         path = (
             Path("~/.docker/run/docker.sock").expanduser()

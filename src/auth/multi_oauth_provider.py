@@ -14,7 +14,7 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from src.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
+from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
 from src.settings import OAUTH_PROVIDER_TYPE, settings
 
 OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))

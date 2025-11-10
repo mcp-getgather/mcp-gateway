@@ -6,15 +6,15 @@ import segment.analytics as analytics
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src.container.manager import Container, ContainerManager
 from src.logs import logger
-from src.server_manager import Container, ServerManager
 from src.settings import settings
 
 HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link", "/dpage"]
 STATIC_PATHS = ["/__assets", "/__static"]
 
 
-class WebPageProxyMiddleware(BaseHTTPMiddleware):
+class WebProxyMiddleware(BaseHTTPMiddleware):
     """
     Proxy web page requests to the mcp-getgather servers.
     - For hosted links, proxy to the server which generated the link.
@@ -71,8 +71,8 @@ class WebPageProxyMiddleware(BaseHTTPMiddleware):
 
     async def _get_server_container(self, path: str) -> Container:
         if any(path.startswith(p) for p in STATIC_PATHS) or path == "/":
-            return await ServerManager.get_unassigned_container()
+            return await ContainerManager.get_unassigned_container()
 
         # hosted link
         hostname = self._get_hostname_from_link(path)
-        return await ServerManager.get_container_by_hostname(hostname)
+        return await ContainerManager.get_container_by_hostname(hostname)

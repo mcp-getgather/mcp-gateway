@@ -8,13 +8,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.auth import setup_mcp_auth
+from src.auth.auth import setup_mcp_auth
+from src.container.manager import ContainerManager
 from src.logs import logger, setup_logging
-from src.mcp import get_mcp_apps
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
-from src.server_manager import ServerManager
+from src.proxies.mcp import get_mcp_apps
+from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
-from src.web_page_proxy import WebPageProxyMiddleware
 
 
 @asynccontextmanager
@@ -37,7 +37,7 @@ logfire.configure(
 )
 logfire.instrument_fastapi(app)
 
-app.add_middleware(WebPageProxyMiddleware)
+app.add_middleware(WebProxyMiddleware)
 
 app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
@@ -53,8 +53,8 @@ async def reload_containers(request: Request):
     if not token or token != settings.ADMIN_API_TOKEN:
         raise HTTPException(status_code=401, detail="Missing or invalid admin token")
 
-    await ServerManager.pull_server_image()
-    await ServerManager.reload_containers(state="all")
+    await ContainerManager.pull_container_image()
+    await ContainerManager.reload_containers(state="all")
 
 
 @app.get("/account/{mcp_name}")
@@ -84,7 +84,7 @@ async def create_server():
         segment_write_key=settings.SEGMENT_WRITE_KEY,
     )
 
-    await ServerManager.reload_containers()
+    await ContainerManager.reload_containers()
 
     app.state.mcp_apps = await get_mcp_apps()
     if settings.auth_enabled:

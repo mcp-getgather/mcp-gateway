@@ -9,40 +9,40 @@ import pytest_asyncio
 from aiodocker import Docker
 from aiodocker.networks import DockerNetwork
 
-from src import docker
-from src.docker import delete_container, get_docker_socket
+from src.container import engine
+from src.container.engine import delete_container, get_container_engine_socket
+from src.container.manager import CONTAINER_IMAGE_NAME, ContainerManager
 from src.logs import logger
-from src.server_manager import SERVER_IMAGE_NAME, ServerManager
 from src.settings import ENV_FILE, settings
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def setup_docker_for_function():
-    """Initialize and clean up a docker environment for testing."""
-    await _cleanup_docker(scope="function")
+async def setup_container_engine_for_function():
+    """Initialize and clean up a container engine environment for testing."""
+    await _cleanup_container_engine(scope="function")
 
     yield
 
-    await _cleanup_docker(scope="function")
+    await _cleanup_container_engine(scope="function")
 
 
 @pytest_asyncio.fixture(autouse=True, scope="session")
-async def setup_docker_for_session():
+async def setup_container_engine():
     """Initialize and clean up a docker environment for testing."""
-    await _cleanup_docker(scope="session")
-    await _init_docker()
+    await _cleanup_container_engine(scope="session")
+    await _init_container_engine()
 
     yield
 
-    await _cleanup_docker(scope="session")
+    await _cleanup_container_engine(scope="session")
 
 
 @pytest.fixture(autouse=True)
 def reset_container_lock():
     """Reset the CONTAINER_LOCK for each test to avoid event loop binding issues."""
-    docker.CONTAINER_LOCK = aiorwlock.RWLock()
+    engine.CONTAINER_LOCK = aiorwlock.RWLock()
     yield
-    docker.CONTAINER_LOCK = aiorwlock.RWLock()
+    engine.CONTAINER_LOCK = aiorwlock.RWLock()
 
 
 async def _run_cmd(cmd: str):
@@ -59,30 +59,30 @@ async def _run_cmd(cmd: str):
         )
 
 
-async def _init_docker():
+async def _init_container_engine():
     """
     Initialize docker environment.
     Pull SERVER_IMAGE image and start services & networks in docker-compose.yml.
     """
-    await ServerManager.pull_server_image()
+    await ContainerManager.pull_container_image()
 
-    cmd = "docker compose"
+    cmd = f"DOCKER_HOST={get_container_engine_socket()} docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
     cmd += " up -d"
     await _run_cmd(cmd)
 
 
-async def _cleanup_docker(scope: Literal["function", "session"]):
+async def _cleanup_container_engine(scope: Literal["function", "session"]):
     """
     Cleanup docker environment.
     For function scope, only cleanup SERVER_IMAGE containers.
-    For session scope, cleanup all DOCKER_PROJECT_NAME containers, networks and images.
+    For session scope, cleanup all CONTAINER_PROJECT_NAME containers, networks and images.
     """
     logger.info("Cleanup docker environment")
-    docker = Docker(url=get_docker_socket())
+    docker = Docker(url=get_container_engine_socket())
 
-    label_filters = [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"]
+    label_filters = [f"com.docker.compose.project={settings.CONTAINER_PROJECT_NAME}"]
     if scope == "function":
         label_filters.append(f"com.docker.compose.service=mcp-getgather")
     containers = await docker.containers.list(all=True, filters={"label": label_filters})  # type: ignore[reportUnknownMemberType]
@@ -95,10 +95,10 @@ async def _cleanup_docker(scope: Literal["function", "session"]):
             await network.delete()
 
         try:
-            await docker.images.delete(SERVER_IMAGE_NAME, force=True)
+            await docker.images.delete(CONTAINER_IMAGE_NAME, force=True)
         except:
             pass  # ignore image not found error
 
     await docker.close()
 
-    shutil.rmtree(settings.server_mount_parent_dir, ignore_errors=True)
+    shutil.rmtree(settings.container_mount_parent_dir, ignore_errors=True)

@@ -1,25 +1,25 @@
-name: ${DOCKER_PROJECT_NAME}
+name: ${CONTAINER_PROJECT_NAME}
 
 networks:
   internal-net:
     driver: bridge
     ipam:
       config:
-        - subnet: ${DOCKER_SUBNET_PREFIX}.0/24
-          gateway: ${DOCKER_SUBNET_PREFIX}.1
+        - subnet: ${CONTAINER_SUBNET_PREFIX}.0/24
+          gateway: ${CONTAINER_SUBNET_PREFIX}.1
 
 services:
   tailscale:
     image: tailscale/tailscale:latest
-    container_name: ${DOCKER_PROJECT_NAME}-tailscale-subnet-router
-    hostname: ${DOCKER_PROJECT_NAME}-router
+    container_name: ${CONTAINER_PROJECT_NAME}-tailscale-subnet-router
+    hostname: ${CONTAINER_PROJECT_NAME}-router
     cap_add:
       - NET_ADMIN
       - NET_RAW
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_ROUTES=${DOCKER_SUBNET_PREFIX}.0/24
+      - TS_ROUTES=${CONTAINER_SUBNET_PREFIX}.0/24
       - TS_ACCEPT_DNS=true
       - TS_USERSPACE=false
     volumes:
@@ -28,8 +28,8 @@ services:
       - /dev/net/tun
     networks:
       internal-net:
-        ipv4_address: ${DOCKER_SUBNET_PREFIX}.2
+        ipv4_address: ${CONTAINER_SUBNET_PREFIX}.2
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv6.conf.all.forwarding=1
-    command: sh -c "sleep 5 && iptables -t nat -A POSTROUTING -s ${DOCKER_SUBNET_PREFIX}.0/24 -o tailscale0 -j MASQUERADE && exec /usr/local/bin/containerboot"
+    command: sh -c "sleep 5 && iptables -t nat -A POSTROUTING -s ${CONTAINER_SUBNET_PREFIX}.0/24 -o tailscale0 -j MASQUERADE && exec /usr/local/bin/containerboot"

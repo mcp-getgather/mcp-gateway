@@ -43,7 +43,7 @@ class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
 def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
     # Dynamically import MultiOAuthProvider only if authentication is enabled
     # to avoid OAuthProvider missing keys errors
-    from src.multi_oauth_provider import MultiOAuthProvider
+    from src.auth.multi_oauth_provider import MultiOAuthProvider
 
     auth_provider = MultiOAuthProvider()
 
