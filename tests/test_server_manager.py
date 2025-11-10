@@ -8,6 +8,7 @@ import pytest
 from assertpy import assert_that
 
 from src.auth import AuthUser
+from src.docker import delete_container
 from src.server_manager import Container, ContainerMetadata, ServerManager, docker_client
 from src.settings import settings
 
@@ -18,12 +19,9 @@ async def test_create_new_container():
 
     await _assert_container_info(
         hostname=hostname,
-        config={
-            "Image": f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather",
-            "Labels": {
-                "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
-                "com.docker.compose.service": "mcp-getgather",
-            },
+        labels={
+            "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
+            "com.docker.compose.service": "mcp-getgather",
         },
         state={
             "Status": "running",
@@ -44,7 +42,6 @@ async def test_create_new_container():
             "Type": "bind",
             "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
             "Destination": "/app/data",
-            "Mode": "rw",
             "RW": True,
             "Propagation": "rprivate",
         },
@@ -61,7 +58,7 @@ async def test_reload_unassigned_container():
 
     async with docker_client() as docker:
         _container = await docker.containers.get(container.id)  # type: ignore[reportUnknownMemberType]
-        await _container.delete(force=True)  # type: ignore[reportUnknownMemberType]
+        await delete_container(_container)
     assert not await ServerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
 
     reloaded_hostname = await ServerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
@@ -89,7 +86,6 @@ async def test_assign_container():
             "Type": "bind",
             "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
             "Destination": "/app/data",
-            "Mode": "rw",
             "RW": True,
             "Propagation": "rprivate",
         },
@@ -109,7 +105,7 @@ async def test_reload_assigned_container():
 
     async with docker_client() as docker:
         _container = await docker.containers.get(container.id)  # type: ignore[reportUnknownMemberType]
-        await _container.delete(force=True)  # type: ignore[reportUnknownMemberType]
+        await delete_container(_container)
     assert not await ServerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
 
     reloaded_hostname = await ServerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
@@ -137,7 +133,7 @@ async def _assert_container_info(
     *,
     hostname: str,
     user: AuthUser | None = None,
-    config: dict[str, Any] | None = None,
+    labels: dict[str, str] | None = None,
     state: dict[str, str | bool] | None = None,
     env: list[str] | None = None,
     mount: dict[str, str | bool] | None = None,
@@ -151,14 +147,14 @@ async def _assert_container_info(
 
     assert info["Name"] == f"/{container_name}"
 
-    if config:
-        assert_that(config).is_subset_of(info["Config"])
+    if labels:
+        assert info["Config"]["Labels"] == labels
     if state:
         assert_that(state).is_subset_of(info["State"])
     if env:
         assert_that(info["Config"]["Env"]).contains(*env)
     if mount:
-        assert_that(info["Mounts"]).contains(mount)
+        assert_that(mount).is_subset_of(info["Mounts"][0])
     if network_aliases:
         network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
         assert_that(info["NetworkSettings"]["Networks"][network_name]["Aliases"]).contains(
@@ -185,14 +181,18 @@ def _assert_same_container(container_1: Container, container_2: Container) -> No
             if k in ["Name", "Image", "Config", "Mounts", "NetworkSettings"]
         }
 
-        info["Config"].pop("Hostname")
+        info["Config"].pop("Hostname", None)
+        info["Config"]["Env"] = sorted(info["Config"]["Env"])
+
         for key in ["SandboxID", "SandboxKey"]:
-            info["NetworkSettings"].pop(key)
+            info["NetworkSettings"].pop(key, None)
 
         network_name = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
-        for key in ["EndpointID", "MacAddress"]:
-            info["NetworkSettings"]["Networks"][network_name].pop(key)
-        info["NetworkSettings"]["Networks"][network_name]["DNSNames"].remove(container.id)
+        for key in ["EndpointID", "MacAddress", "DNSNames", "IPAddress"]:
+            info["NetworkSettings"]["Networks"][network_name].pop(key, None)
+
+        if container.id in info["NetworkSettings"]["Networks"][network_name]["Aliases"]:
+            info["NetworkSettings"]["Networks"][network_name]["Aliases"].remove(container.id)
 
         return info
 

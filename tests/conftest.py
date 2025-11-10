@@ -9,7 +9,8 @@ import pytest_asyncio
 from aiodocker import Docker
 from aiodocker.networks import DockerNetwork
 
-from src import server_manager
+from src import docker
+from src.docker import delete_container, get_docker_socket
 from src.logs import logger
 from src.server_manager import SERVER_IMAGE_NAME, ServerManager
 from src.settings import ENV_FILE, settings
@@ -39,16 +40,14 @@ async def setup_docker_for_session():
 @pytest.fixture(autouse=True)
 def reset_container_lock():
     """Reset the CONTAINER_LOCK for each test to avoid event loop binding issues."""
-    server_manager.CONTAINER_LOCK = aiorwlock.RWLock()
+    docker.CONTAINER_LOCK = aiorwlock.RWLock()
     yield
-    server_manager.CONTAINER_LOCK = aiorwlock.RWLock()
+    docker.CONTAINER_LOCK = aiorwlock.RWLock()
 
 
 async def _run_cmd(cmd: str):
     process = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     output, error = await process.communicate()
     exit_status = process.returncode
@@ -67,7 +66,7 @@ async def _init_docker():
     """
     await ServerManager.pull_server_image()
 
-    cmd = f"docker compose"
+    cmd = "docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
     cmd += " up -d"
@@ -81,18 +80,16 @@ async def _cleanup_docker(scope: Literal["function", "session"]):
     For session scope, cleanup all DOCKER_PROJECT_NAME containers, networks and images.
     """
     logger.info("Cleanup docker environment")
-    docker = Docker()
+    docker = Docker(url=get_docker_socket())
 
-    label_filter = [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"]
-    container_filters = {"label": label_filter}
+    label_filters = [f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}"]
     if scope == "function":
-        container_filters["ancestor"] = [SERVER_IMAGE_NAME]
-    containers = await docker.containers.list(all=True, filters=container_filters)  # type: ignore[reportUnknownMemberType]
-    for container in containers:
-        await container.delete(force=True)  # type: ignore[reportUnknownMemberType]
+        label_filters.append(f"com.docker.compose.service=mcp-getgather")
+    containers = await docker.containers.list(all=True, filters={"label": label_filters})  # type: ignore[reportUnknownMemberType]
+    await asyncio.gather(*[delete_container(container) for container in containers])
 
     if scope == "session":
-        network_data_list = await docker.networks.list(filters={"label": label_filter})
+        network_data_list = await docker.networks.list(filters={"label": label_filters})
         for network_data in network_data_list:
             network = DockerNetwork(docker, network_data["Id"])
             await network.delete()
