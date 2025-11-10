@@ -10,9 +10,9 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 from pydantic import AnyUrl, BaseModel
 
-from src.auth import AuthUser
+from src.auth.auth import AuthUser
+from src.container.manager import Container, ContainerManager
 from src.logs import logger
-from src.server_manager import Container, ServerManager
 from src.settings import settings
 
 
@@ -180,7 +180,7 @@ async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthDat
                 raise ValueError("Failed to get user info")
 
             user = AuthUser(**result.structuredContent)
-            container = await ServerManager.get_user_container(user)
+            container = await ContainerManager.get_user_container(user)
             oauth_data.data = MCPDataResponse(user=user, container=container)
             oauth_data.data_ready.set()
 

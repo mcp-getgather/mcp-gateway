@@ -1,12 +1,19 @@
 # mcp-gateway
 
-A gateway that authenticates user and routes to the user's personal [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) container.
+`mcp-gateway` manages a group of [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) containers. It authenticates user and routes to the user's personal `mcp-getgather` container.
 
 ## Prerequisite
 
-### Docker Engine
+### Container Engine
 
-Install from [Docker website](https://docs.docker.com/engine/install/).
+Both Docker and Podman are supported. Install [Docker](https://docs.docker.com/engine/install/) or [Podman](https://podman.io/docs/installation).
+
+Podman is run in rootful mode on Linux, so socket permssion needs to be updated to allow non-root user access.
+
+```bash
+sudo chmod 755 /run/podman
+sudo chmod 666 /run/podman/podman.sock
+```
 
 ### Tailscale Auth Key
 
@@ -25,12 +32,18 @@ Create an auth key at [Tailscale Admin Console](https://login.tailscale.com/admi
 - `PROTOCOL` is `http:` or `https:`. `https:` is required in some cases, e.g., Claude Desktop Connectors.
 - `HOST` is the hostname of your service, including the port.
 
+### Docker Compose
+
+Docker compose is used to set up subnet and tailscale router. Install [Docker compose](https://docs.docker.com/compose/install/). It works for both Docker and Podman.
+
 ## Run locally
 
-1. Download an docker image for [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather)
+1. Download the lastet [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) image
 
 ```bash
 docker image pull ghcr.io/mcp-getgather/mcp-getgather
+# or
+podman image pull ghcr.io/mcp-getgather/mcp-getgather
 ```
 
 You can also build `mcp-getgather` image locally
@@ -43,11 +56,12 @@ docker build -t mcp-getgather .
 2. Create an `.env` file from `env.template`
 
 ```
-DOCKER_PROJECT_NAME=getgather
-DOCKER_SUBNET_PREFIX=172.16.0
+CONTAINER_ENGINE=docker # or podman
+CONTAINER_PROJECT_NAME=getgather
+CONTAINER_SUBNET_PREFIX=172.16.0
 TS_AUTHKEY=
 
-SERVER_IMAGE=ghcr.io/mcp-getgather/mcp-getgather # or mcp-getgather if built locally
+CONTAINER_IMAGE=ghcr.io/mcp-getgather/mcp-getgather # or mcp-getgather if built locally
 HOST_DATA_DIR=
 
 GATEWAY_ORIGIN=http://localhost:9000
@@ -63,7 +77,18 @@ OAUTH_GOOGLE_CLIENT_SECRET=
 docker compose up -d
 ```
 
-3. Approve "Subnet routes" for the tailscale router hostname `${DOCKER_DOMAIN}-router`
+For Podman, set the socket path in the environment variables before running `docker compose`
+
+```bash
+# on Linux
+PODMAN_SOCKET_PATH=/run/podman/podman.sock
+# on macOS
+PODMAN_SOCKET_PATH=$HOME/.local/share/containers/podman/machine/podman.sock
+
+export DOCKER_HOST=unix://${PODMAN_SOCKET_PATH}
+```
+
+3. Approve "Subnet routes" for the tailscale router hostname `${CONTAINER_POD_NAME}-router`
    at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
 
 4. Install dependencies

@@ -10,9 +10,9 @@ from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
 from pydantic import BaseModel
 
-from src.auth import get_auth_user
+from src.auth.auth import get_auth_user
+from src.container.manager import CONTAINER_STARTUP_TIME, ContainerManager
 from src.logs import logger
-from src.server_manager import CONTAINER_STARTUP_TIME, ServerManager
 from src.settings import settings
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
@@ -21,7 +21,7 @@ MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 class SegmentMiddleware(Middleware):
     async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):
         user = get_auth_user()
-        container = await ServerManager.get_user_container(user)
+        container = await ContainerManager.get_user_container(user)
 
         data: dict[str, Any] = {"method": context.method}
         if isinstance(context.message, BaseModel):
@@ -39,7 +39,7 @@ class SegmentMiddleware(Middleware):
 def _create_client_factory(path: str):
     async def _create_client():
         user = get_auth_user()
-        container = await ServerManager.get_user_container(user)
+        container = await ContainerManager.get_user_container(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
 
         headers = {
@@ -91,14 +91,14 @@ async def get_mcp_apps():
 async def _fetch_mcp_routes():
     logger.info("Fetching MCP routes from mcp-getgather container")
     try:
-        container = await ServerManager.get_unassigned_container()
+        container = await ContainerManager.get_unassigned_container()
     except RuntimeError:
         wait_seconds = CONTAINER_STARTUP_TIME.total_seconds()
         logger.info(f"Waiting for {wait_seconds} seconds for containers to start")
         # note: this is intentionally blocking instead of asyncio.sleep
         sleep(CONTAINER_STARTUP_TIME.total_seconds())
 
-        container = await ServerManager.get_unassigned_container()
+        container = await ContainerManager.get_unassigned_container()
 
     url = f"http://{container.ip}/api/docs-mcp"
 

@@ -11,8 +11,8 @@ from aiodocker.containers import DockerContainer
 from nanoid import generate
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.auth import AuthUser
-from src.docker import docker_client
+from src.auth.auth import AuthUser
+from src.container.engine import docker_client
 from src.logs import logger
 from src.settings import settings
 
@@ -21,10 +21,10 @@ FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
 CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 
 # "internal-net" is the network name used in docker-compose.yml
-# the full network name is prefixed by settings.DOCKER_PROJECT_NAME
-DOCKER_NETWORK_NAME = f"{settings.DOCKER_PROJECT_NAME}_internal-net"
+# the full network name is prefixed by settings.CONTAINER_PROJECT_NAME
+CONTAINER_NETWORK_NAME = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
 
-SERVER_IMAGE_NAME = f"{settings.DOCKER_PROJECT_NAME}_mcp-getgather"
+CONTAINER_IMAGE_NAME = f"{settings.CONTAINER_PROJECT_NAME}_mcp-getgather"
 
 
 class ContainerMetadata(BaseModel):
@@ -51,7 +51,7 @@ class Container(BaseModel):
         return cls(
             id=container.id[:12],
             hostname=info["Name"].strip("/").split("-")[-1],
-            ip=info["NetworkSettings"]["Networks"][DOCKER_NETWORK_NAME]["IPAddress"],
+            ip=info["NetworkSettings"]["Networks"][CONTAINER_NETWORK_NAME]["IPAddress"],
             container=container,
         )
 
@@ -81,7 +81,7 @@ class Container(BaseModel):
 
     @classmethod
     def mount_dir_for_hostname(cls, hostname: str) -> Path:
-        path = settings.server_mount_parent_dir / hostname
+        path = settings.container_mount_parent_dir / hostname
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path
@@ -95,12 +95,12 @@ class Container(BaseModel):
         return cls.mount_dir_for_hostname(hostname) / "metadata.json"
 
 
-class ServerManager:
+class ContainerManager:
     """
     Manages the lifecycle and routing of containers.
 
     === Containers ===
-    - Containers run the SERVER_IMAGE_NAME service in the same network as the gateway.
+    - Containers run the CONTAINER_IMAGE_NAME service in the same network as the gateway.
     - Container identifiers:
       - CONTAINER_ID: the id of the container, auto created by Docker. It changes after reload / restart.
       - HOSTNAME: the unique identifier of the container through the whole lifecycle.
@@ -112,7 +112,7 @@ class ServerManager:
     - Container IP address is used to route requests to the container.
 
     === Lifecyle and Routing ===
-    - The pool maintains a list of settings.MIN_SERVER_POOL_SIZE unassigned containers.
+    - The pool maintains a list of settings.MIN_CONTAINER_POOL_SIZE unassigned containers.
     - When a new user connects, the manager will assign a container from the pool to the user, and backfill the pool.
       Assignment updates the container name from UNASSIGNED-[HOSTNAME] to [USER_ID]-[HOSTNAME].
     - Containers can also be reloaded on demand, in order to update the container image.
@@ -167,18 +167,18 @@ class ServerManager:
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
             if num <= 0:
                 return
-            logger.info(f"Backfill server pool with {num} servers")
+            logger.info(f"Backfill container pool with {num} containers")
             await asyncio.gather(*[
                 cls._create_or_replace_container(docker=_docker) for _ in range(num)
             ])
 
     @classmethod
-    async def pull_server_image(cls):
+    async def pull_container_image(cls):
         source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
-        logger.info(f"Pulling server image from {source_image}")
+        logger.info(f"Pulling container image from {source_image}")
         async with docker_client() as docker:
             await docker.images.pull(source_image)
-            await docker.images.tag(source_image, repo=SERVER_IMAGE_NAME)
+            await docker.images.tag(source_image, repo=CONTAINER_IMAGE_NAME)
 
     @classmethod
     async def _get_containers(
@@ -190,7 +190,7 @@ class ServerManager:
     ) -> list[Container]:
         filters = {
             "label": [
-                f"com.docker.compose.project={settings.DOCKER_PROJECT_NAME}",
+                f"com.docker.compose.project={settings.CONTAINER_PROJECT_NAME}",
                 f"com.docker.compose.service=mcp-getgather",
             ]
         }
@@ -234,7 +234,7 @@ class ServerManager:
 
     @classmethod
     def _get_mount_dirs(cls):
-        return [item for item in settings.server_mount_parent_dir.iterdir() if item.is_dir()]
+        return [item for item in settings.container_mount_parent_dir.iterdir() if item.is_dir()]
 
     @classmethod
     def _generate_container_name(cls) -> str:
@@ -279,7 +279,7 @@ class ServerManager:
         dst_data_dir = "/app/data"
 
         config: dict[str, Any] = {
-            "Image": SERVER_IMAGE_NAME,
+            "Image": CONTAINER_IMAGE_NAME,
             "User": "root",
             "Env": [
                 f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
@@ -288,8 +288,7 @@ class ServerManager:
                 f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
                 f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
                 f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
-                f"OPENAI_API_KEY={settings.OPENAI_API_KEY}",
-                f"SENTRY_DSN={settings.SERVER_SENTRY_DSN}",
+                f"SENTRY_DSN={settings.CONTAINER_SENTRY_DSN}",
                 f"DATA_DIR={dst_data_dir}",
                 f"HOSTNAME={hostname}",
                 "PORT=80",
@@ -298,9 +297,11 @@ class ServerManager:
                 "Binds": [f"{src_data_dir}:{dst_data_dir}:rw"],
                 "CapAdd": ["NET_BIND_SERVICE"],
             },
-            "NetworkingConfig": {"EndpointsConfig": {DOCKER_NETWORK_NAME: {"Aliases": [hostname]}}},
+            "NetworkingConfig": {
+                "EndpointsConfig": {CONTAINER_NETWORK_NAME: {"Aliases": [hostname]}}
+            },
             "Labels": {
-                "com.docker.compose.project": settings.DOCKER_PROJECT_NAME,
+                "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
                 "com.docker.compose.service": "mcp-getgather",
             },
         }
@@ -320,7 +321,7 @@ class ServerManager:
 
         container = await docker.containers.create_or_replace(container_name, config)
         await container.start()  # type: ignore[reportUnknownMemberType]
-        logger.info(f"Created or reloaded server hostname: {hostname}, id: {container.id[:12]}")
+        logger.info(f"Created or reloaded container hostname: {hostname}, id: {container.id[:12]}")
         return hostname
 
     @classmethod
@@ -367,8 +368,4 @@ class ServerManager:
     @classmethod
     def _tailscale_router_ip(cls):
         """IP address of the tailscale router for accessing proxy service."""
-        return f"{settings.DOCKER_SUBNET_PREFIX}.2"
-
-    @classmethod
-    def _user_server_host(cls, user: AuthUser) -> str:
-        return f"{user.user_id}.{user.auth_provider}"
+        return f"{settings.CONTAINER_SUBNET_PREFIX}.2"
