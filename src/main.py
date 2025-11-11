@@ -25,7 +25,6 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(lifespan=lifespan)
 logfire.configure(
     service_name="mcp-gateway",
     send_to_logfire="if-token-present",
@@ -35,42 +34,44 @@ logfire.configure(
         repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
     ),
 )
-logfire.instrument_fastapi(app)
-
-app.add_middleware(WebProxyMiddleware)
-
-app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
 
-@app.get("/health")
-async def health():
-    return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
+def create_app():
+    app = FastAPI(lifespan=lifespan)
+    logfire.instrument_fastapi(app)
 
+    app.add_middleware(WebProxyMiddleware)
 
-@app.post("/admin/reload")
-async def reload_containers(request: Request):
-    token = request.headers.get("x-admin-token")
-    if not token or token != settings.ADMIN_API_TOKEN:
-        raise HTTPException(status_code=401, detail="Missing or invalid admin token")
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
-    await ContainerManager.pull_container_image()
-    await ContainerManager.reload_containers(state="all")
+    @app.get("/health")
+    async def health():  # type: ignore[reportUnusedFunction]
+        return f"OK {int(datetime.now().timestamp())} GIT_REV: {settings.GIT_REV}"
 
+    @app.post("/admin/reload")
+    async def reload_containers(request: Request):  # type: ignore[reportUnusedFunction]
+        token = request.headers.get("x-admin-token")
+        if not token or token != settings.ADMIN_API_TOKEN:
+            raise HTTPException(status_code=401, detail="Missing or invalid admin token")
 
-@app.get("/account/{mcp_name}")
-async def account(mcp_name: str, state: str | None = None):
-    result = await auth_and_connect(mcp_name, state)
-    if isinstance(result, MCPAuthResponse):
-        return RedirectResponse(url=result.auth_url)
-    else:
-        # TODO: return a web pageinstead of json
-        return JSONResponse(status_code=200, content=result.model_dump(exclude_none=True))
+        await ContainerManager.pull_container_image()
+        await ContainerManager.reload_containers(state="all")
 
+    @app.get("/account/{mcp_name}")
+    async def account(mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
+        result = await auth_and_connect(mcp_name, state)
+        if isinstance(result, MCPAuthResponse):
+            return RedirectResponse(url=result.auth_url)
+        else:
+            # TODO: return a web pageinstead of json
+            return JSONResponse(status_code=200, content=result.model_dump(exclude_none=True))
 
-@app.get("/client/auth/callback")
-async def client_auth_callback(code: str, state: str):
-    oauth_data = await handle_auth_code(state=state, code=code)
-    return RedirectResponse(url=f"/account/{oauth_data.mcp_name}?state={oauth_data.state}")
+    @app.get("/client/auth/callback")
+    async def client_auth_callback(code: str, state: str):  # type: ignore[reportUnusedFunction]
+        oauth_data = await handle_auth_code(state=state, code=code)
+        return RedirectResponse(url=f"/account/{oauth_data.mcp_name}?state={oauth_data.state}")
+
+    return app
 
 
 async def create_server():
@@ -86,6 +87,7 @@ async def create_server():
 
     await ContainerManager.reload_containers()
 
+    app = create_app()
     app.state.mcp_apps = await get_mcp_apps()
     if settings.auth_enabled:
         logger.info("Setting up MCP authentication")

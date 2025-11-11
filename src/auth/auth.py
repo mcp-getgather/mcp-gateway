@@ -104,6 +104,9 @@ class AuthUser(BaseModel):
     # google specific
     email: str | None = None
 
+    # getgather specific
+    app_id: str | None = None
+
     @property
     def user_id(self) -> str:
         """Unique user name combining login and auth provider"""
@@ -119,8 +122,11 @@ def get_auth_user() -> AuthUser:
     name = token.claims.get("name")
     login = token.claims.get("login")
     email = token.claims.get("email")
+    app_id = token.claims.get("app_id")
     provider = token.claims.get("auth_provider")
     if not sub or not provider:
         raise RuntimeError("Missing sub or provider in auth token")
 
-    return AuthUser(sub=sub, auth_provider=provider, name=name, login=login, email=email)
+    return AuthUser(
+        sub=sub, auth_provider=provider, name=name, login=login, email=email, app_id=app_id
+    )

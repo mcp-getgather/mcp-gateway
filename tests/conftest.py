@@ -1,9 +1,11 @@
 import asyncio
 import shutil
 import subprocess
+import time
 from typing import Literal
 
 import aiorwlock
+import httpx
 import pytest
 import pytest_asyncio
 from aiodocker import Docker
@@ -11,9 +13,39 @@ from aiodocker.networks import DockerNetwork
 
 from src.container import engine
 from src.container.engine import delete_container, get_container_engine_socket
-from src.container.manager import CONTAINER_IMAGE_NAME, ContainerManager
+from src.container.manager import CONTAINER_IMAGE_NAME, CONTAINER_STARTUP_TIME, ContainerManager
 from src.logs import logger
+from src.main import create_server
 from src.settings import ENV_FILE, settings
+
+
+@pytest_asyncio.fixture(scope="function")
+async def server():
+    server = await create_server()
+    server_task = asyncio.create_task(server.serve())
+
+    # wait for server to start
+    url = f"{settings.GATEWAY_ORIGIN}/health"
+    end_time = time.time() + CONTAINER_STARTUP_TIME.total_seconds() + 5
+
+    try:
+        while time.time() < end_time:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, timeout=1.0)
+                    if response.is_success:
+                        yield server
+                        break
+            except httpx.RequestError:
+                pass
+            time.sleep(1)
+        else:
+            raise RuntimeError("Server failed to start")
+    except Exception as e:
+        raise e
+    finally:
+        server.should_exit = True
+        await server_task
 
 
 @pytest_asyncio.fixture(autouse=True)

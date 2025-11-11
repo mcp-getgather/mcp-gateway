@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     OAUTH_GOOGLE_CLIENT_ID: str = ""
     OAUTH_GOOGLE_CLIENT_SECRET: str = ""
 
-    GETGATHER_CLIENT_IDS: frozenset[str] = frozenset()
+    GETGATHER_APP_IDS: frozenset[str] = frozenset()
 
     PROXY_TIMEOUT: float = 10.0  # timeout for general operations
     PROXY_READ_TIMEOUT: float = 60 * 5  # long timeout for read operations
