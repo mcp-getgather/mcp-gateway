@@ -15,7 +15,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
 from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
-from src.settings import OAUTH_PROVIDER_TYPE, settings
+from src.settings import OAUTH_PROVIDER_TYPE, OAUTH_SCOPES, settings
 
 OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))
 
@@ -41,12 +41,10 @@ google_auth_provider = GoogleProvider(
     required_scopes=GOOGLE_AUTH_SCOPES,
 )
 
-MULTI_OAUTH_SCOPES = ["multi_oauth_user"]  # dummy scope to make scope validation work
-
 
 class MultiOAuthTokenVerifier(TokenVerifier):
     def __init__(self):
-        super().__init__(required_scopes=MULTI_OAUTH_SCOPES)
+        super().__init__(required_scopes=OAUTH_SCOPES)
 
     async def verify_token(self, token: str) -> AccessToken | None:
         if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
@@ -60,7 +58,7 @@ class MultiOAuthTokenVerifier(TokenVerifier):
             if result:
                 result.claims["auth_provider"] = "google"
         if result:  # reset scopes to use default scopes
-            result.scopes = MULTI_OAUTH_SCOPES
+            result.scopes = OAUTH_SCOPES
         return result
 
 

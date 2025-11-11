@@ -10,6 +10,7 @@ FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
 OAUTH_PROVIDER_TYPE = Literal["github", "google", "getgather"]
+OAUTH_SCOPES = ["getgather_user_scope"]  # dummy scope to make scope validation work
 
 
 class Settings(BaseSettings):
