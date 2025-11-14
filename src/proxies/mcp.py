@@ -11,7 +11,7 @@ from fastmcp.server.proxy import FastMCPProxy, ProxyClient
 from pydantic import BaseModel
 
 from src.auth.auth import get_auth_user
-from src.container.manager import CONTAINER_STARTUP_TIME, ContainerManager
+from src.container.manager import CONTAINER_STARTUP_SECONDS, ContainerManager
 from src.logs import logger
 from src.settings import settings
 
@@ -93,10 +93,9 @@ async def _fetch_mcp_routes():
     try:
         container = await ContainerManager.get_unassigned_container()
     except RuntimeError:
-        wait_seconds = CONTAINER_STARTUP_TIME.total_seconds()
-        logger.info(f"Waiting for {wait_seconds} seconds for containers to start")
+        logger.info(f"Waiting for {CONTAINER_STARTUP_SECONDS} seconds for containers to start")
         # note: this is intentionally blocking instead of asyncio.sleep
-        sleep(CONTAINER_STARTUP_TIME.total_seconds())
+        sleep(CONTAINER_STARTUP_SECONDS)
 
         container = await ContainerManager.get_unassigned_container()
 

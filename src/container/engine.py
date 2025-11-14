@@ -1,82 +1,254 @@
+import asyncio
+import json
 import platform
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 import aiorwlock
-from aiodocker import Docker
-from aiodocker.containers import DockerContainer
 
+from src.container.container import Container
 from src.logs import logger
 from src.settings import settings
 
-CONTAINER_LOCK = aiorwlock.RWLock()
+CONTAINER_ENGINE_LOCK = aiorwlock.RWLock()
+
+
+class ContainerEngineClient:
+    def __init__(
+        self,
+        engine: Literal["docker", "podman"],
+        *,
+        network: str,
+        startup_seconds: float = 5,
+        lock: Literal["read", "write"] | None = None,
+    ):
+        self.engine = engine
+        self.network = network
+        self.lock = lock
+        self.socket = get_container_engine_socket(engine)
+        self.startup_seconds = startup_seconds
+
+    async def run(self, *args: str, timeout: float = 2) -> str:
+        return await run_cli(self.engine, *args, timeout=timeout)
+
+    async def list_containers(
+        self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
+    ) -> list[Container]:
+        filters: list[str] = []
+        if partial_name:
+            filters.append(f"name={partial_name}")
+        if labels:
+            filters.extend([f"label={k}={v}" for k, v in labels.items()])
+
+        args: list[str] = []
+        for filter in filters:
+            args.extend(["--filter", filter])
+
+        result = await self.run("container", "ls", *args, "--format", "{{.ID}}")
+        ids = result.splitlines()
+        if not ids:
+            return []
+        infos = await self.inspect_containers(*ids)
+        return [Container.from_inspect(info, network_name=self.network) for info in infos]
+
+    async def get_container(self, *, id: str | None = None, name: str | None = None) -> Container:
+        if id:
+            info = await self.inspect_container(id)
+            container = Container.from_inspect(info, network_name=self.network)
+            if name and name not in container.hostname:
+                raise RuntimeError(f"Container id {id} and name {name} mismatch")
+            return container
+        if name:
+            containers = await self.list_containers(partial_name=name)
+            if len(containers) > 1:
+                raise RuntimeError(f"Multiple containers found for name: {name}")
+            if not containers:
+                raise RuntimeError(f"No container found for name: {name}")
+            return containers[0]
+
+        raise RuntimeError("Either id or name must be provided")
+
+    async def inspect_container(self, id: str) -> dict[str, str]:
+        infos = await self.inspect_containers(id)
+        return infos[0]
+
+    async def inspect_containers(self, *ids: str) -> list[dict[str, str]]:
+        if not ids:
+            return []
+
+        result = await self.run("container", "inspect", *ids, "--format", "json")
+        infos = json.loads(result)
+        if len(infos) != len(ids):
+            raise Exception(f"Failed to inspect containers: {ids}")
+        return infos
+
+    async def create_container(
+        self,
+        *,
+        name: str,
+        hostname: str,
+        user: str,
+        image: str,
+        cmd: list[str] | None = None,
+        envs: dict[str, Any] | None = None,
+        volumes: list[str] | None = None,
+        labels: dict[str, str] | None = None,
+        cap_adds: list[str] | None = None,
+    ):
+        args = ["run", "-d", "--restart", "on-failure:3"]
+        args.extend(["--name", name])
+        args.extend(["--hostname", hostname])
+        args.extend(["--user", user])
+        if envs:
+            for key, value in envs.items():
+                args.extend(["--env", f"{key}={value}"])
+        if volumes:
+            for volume in volumes:
+                args.extend(["--volume", volume])
+        if labels:
+            for key, value in labels.items():
+                args.extend(["--label", f"{key}={value}"])
+        if cap_adds:
+            for cap in cap_adds:
+                args.extend(["--cap-add", cap])
+        args.extend(["--network", self.network])
+        args.append(image)
+        if cmd:
+            args.extend(cmd)
+
+        id = await self.run(*args)
+        info = await self.inspect_container(id)
+        return Container.from_inspect(info, network_name=self.network)
+
+    async def create_or_replace_container(
+        self,
+        *,
+        name: str,
+        hostname: str,
+        user: str,
+        image: str,
+        cmd: list[str] | None = None,
+        envs: dict[str, Any] | None = None,
+        volumes: list[str] | None = None,
+        labels: dict[str, str] | None = None,
+        cap_adds: list[str] | None = None,
+    ):
+        containers = await self.list_containers(partial_name=name)
+        if len(containers) > 1:
+            raise Exception(f"Replace failed: multiple containers found for name: {name}")
+
+        if containers:
+            await self.delete_container(containers[0].id)
+
+        return await self.create_container(
+            name=name,
+            hostname=hostname,
+            user=user,
+            image=image,
+            cmd=cmd,
+            envs=envs,
+            volumes=volumes,
+            labels=labels,
+            cap_adds=cap_adds,
+        )
+
+    async def delete_container(self, id: str):
+        await self.delete_containers(id)
+
+    async def delete_containers(self, *ids: str):
+        if not ids:
+            return
+
+        args = ["container", "rm", "--force"]
+        if self.engine == "podman":
+            args.extend(["--time", "0"])
+        await self.run(*args, *ids)
+
+    async def rename_container(self, id: str, new_name: str):
+        await self.run("container", "rename", id, new_name)
+
+    async def pull_image(self, image: str, *, tag: str | None = None):
+        await self.run("image", "pull", image, timeout=30)
+        if tag:
+            await self.run("image", "tag", image, tag)
+
+    async def delete_image(self, image: str):
+        await self.run("image", "rm", "--force", image)
 
 
 @asynccontextmanager
-async def docker_client(
-    client: Docker | None = None, *, lock: Literal["read", "write"] | None = None
+async def engine_client(
+    client: ContainerEngineClient | None = None,
+    *,
+    network: str | None = None,
+    lock: Literal["read", "write"] | None = None,
 ):
+    """Synchronize container engine operations."""
     nested = client is not None
-    _client = client or Docker(url=get_container_engine_socket())
-    nested_exceptions: list[Exception] = []
+
+    if nested:
+        if client.lock is None and lock is not None:
+            raise RuntimeError(
+                "Cannot acquire lock in nested context. Lock must be acquired at the outer level."
+            )
+        if client.lock == "read" and lock == "write":
+            raise RuntimeError(
+                "Cannot upgrade read lock to write lock in nested context. "
+                "Write lock must be acquired at the outer level."
+            )
+        if network:
+            if client.network != network:
+                raise RuntimeError("Cannot change network in nested context")
+        _client = client
+    else:
+        if network is None:
+            raise RuntimeError("Network is required when creating a new container engine client")
+        _client = ContainerEngineClient(settings.CONTAINER_ENGINE, network=network, lock=lock)
+
+    exceptions: list[Exception] = []
 
     try:
         if not nested:  # only acquire lock if at the outer level
             if lock == "read":
-                await CONTAINER_LOCK.reader_lock.acquire()
+                await CONTAINER_ENGINE_LOCK.reader_lock.acquire()
             elif lock == "write":
-                await CONTAINER_LOCK.writer_lock.acquire()
+                await CONTAINER_ENGINE_LOCK.writer_lock.acquire()
 
         yield _client
     except Exception as e:
         # collect all exceptions in nested session, so it doesn't break others
         # and raise them together in the 'finally' block
-        logger.exception(f"Docker operation failed: {e}")
-        nested_exceptions.append(e)
+        logger.exception(f"Container engine operation failed: {e}")
+        exceptions.append(e)
     finally:
         if nested:
             return
 
-        await _client.close()
         if lock == "read":
-            CONTAINER_LOCK.reader_lock.release()
+            CONTAINER_ENGINE_LOCK.reader_lock.release()
         elif lock == "write":
-            CONTAINER_LOCK.writer_lock.release()
+            CONTAINER_ENGINE_LOCK.writer_lock.release()
 
-        if not nested_exceptions:
+        if not exceptions:
             return
 
-        if len(nested_exceptions) == 1:
-            raise nested_exceptions[0]
+        if len(exceptions) == 1:
+            raise exceptions[0]
         else:
             raise ExceptionGroup(
-                "Multiple exceptions occurred during docker operations", nested_exceptions
+                "Multiple exceptions occurred during container engine operations", exceptions
             )
 
 
-async def delete_container(container: DockerContainer, *, client: Docker | None = None):
-    """Handle container deletion defensively to ignore expected errors."""
-    id = container.id[:12]
-    async with docker_client(client, lock="write") as docker:
-        try:
-            await container.delete(force=True, timeout=0)  # type: ignore[reportUnknownMemberType]
-        except Exception as e:
-            try:
-                await docker.containers.get(id)  # type: ignore[reportUnknownMemberType]
-                raise e  # container still exists, raise the original error
-            except Exception as e:
-                logger.warning(f"Expected error deleting container {container.id}: {e}")
-
-
-def get_container_engine_socket():
-    if settings.CONTAINER_ENGINE == "docker":
+def get_container_engine_socket(engine: Literal["docker", "podman"]):
+    if engine == "docker":
         path = (
             Path("~/.docker/run/docker.sock").expanduser()
             if platform.system() == "Darwin"
             else "/var/run/docker.sock"
         )
-    else:
+    elif engine == "podman":
         path = (
             Path("~/.local/share/containers/podman/machine/podman.sock").expanduser()
             if platform.system() == "Darwin"
@@ -84,3 +256,43 @@ def get_container_engine_socket():
         )
 
     return f"unix://{path}"
+
+
+class CLIOnError(Protocol):
+    def __call__(self, returncode: int | None, error: str) -> tuple[int, str]:
+        """
+        Handle errors from CLI, return updated return code and error message.
+        e.g., suppress expected errors by returning (0, updated error message).
+        """
+        ...
+
+
+async def run_cli(
+    cmd: str, *args: str, timeout: float = 2, on_error: CLIOnError | None = None
+) -> str:
+    """
+    Run a command asynchronously and return the stdout.
+    Use timeout to limit the command execution time.
+    Use on_error to handle errors.
+    """
+    process = await asyncio.create_subprocess_exec(
+        cmd, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise Exception(f"CLI timeout after {timeout} seconds\nCommand: {cmd} {' '.join(args)}")
+
+    returncode, error = process.returncode, stderr.decode().strip()
+    if on_error:
+        returncode, error = on_error(returncode, error)
+
+    logger.debug(f"Executed CLI '{cmd} {' '.join(args)}', return code: {returncode}")
+
+    if returncode != 0:
+        raise Exception(f"CLI failed: {error}\nCommand: {cmd} {' '.join(args)}")
+
+    return stdout.decode().strip()

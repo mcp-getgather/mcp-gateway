@@ -2,18 +2,15 @@
 
 `mcp-gateway` manages a group of [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) containers. It authenticates user and routes to the user's personal `mcp-getgather` container.
 
+Below are instructions to run `mcp-gateway` on MacOS for development.
+
 ## Prerequisite
 
 ### Container Engine
 
 Both Docker and Podman are supported. Install [Docker](https://docs.docker.com/engine/install/) or [Podman](https://podman.io/docs/installation).
 
-Podman is run in rootful mode on Linux, so socket permssion needs to be updated to allow non-root user access.
-
-```bash
-sudo chmod 755 /run/podman
-sudo chmod 666 /run/podman/podman.sock
-```
+Make sure to allocate enough CPUs and Memories to the engine.
 
 ### Tailscale Auth Key
 
@@ -34,7 +31,7 @@ Create an auth key at [Tailscale Admin Console](https://login.tailscale.com/admi
 
 ### Docker Compose
 
-Docker compose is used to set up subnet and tailscale router. Install [Docker compose](https://docs.docker.com/compose/install/). It works for both Docker and Podman.
+Docker compose is used to set up subnet and tailscale router. It should be installed if Docker Desktop is installed, otherwise, install it [here](https://docs.docker.com/compose/install/). It works for both Docker and Podman.
 
 ## Run locally
 
@@ -75,21 +72,11 @@ OAUTH_GOOGLE_CLIENT_SECRET=
 
 ```bash
 docker compose up -d
+# or podman
+podmam compose up -d
 ```
 
-For Podman, set the socket path in the environment variables before running `docker compose`
-
-```bash
-# on Linux
-PODMAN_SOCKET_PATH=/run/podman/podman.sock
-# on macOS
-PODMAN_SOCKET_PATH=$HOME/.local/share/containers/podman/machine/podman.sock
-
-export DOCKER_HOST=unix://${PODMAN_SOCKET_PATH}
-```
-
-3. Approve "Subnet routes" for the tailscale router hostname `${CONTAINER_POD_NAME}-router`
-   at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
+3. Approve "Subnet routes" for the tailscale router hostname `${CONTAINER_POD_NAME}-router` at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
 
 4. Install dependencies
 

@@ -1,19 +1,27 @@
 import asyncio
 import shutil
-import subprocess
 import time
+from pathlib import Path
 from typing import Literal
 
 import aiorwlock
 import httpx
 import pytest
 import pytest_asyncio
-from aiodocker import Docker
-from aiodocker.networks import DockerNetwork
 
 from src.container import engine
-from src.container.engine import delete_container, get_container_engine_socket
-from src.container.manager import CONTAINER_IMAGE_NAME, CONTAINER_STARTUP_TIME, ContainerManager
+from src.container.engine import (
+    ContainerEngineClient,
+    engine_client,
+    get_container_engine_socket,
+    run_cli,
+)
+from src.container.manager import (
+    CONTAINER_IMAGE_NAME,
+    CONTAINER_NETWORK_NAME,
+    CONTAINER_STARTUP_SECONDS,
+    ContainerManager,
+)
 from src.logs import logger
 from src.main import create_server
 from src.settings import ENV_FILE, settings
@@ -26,7 +34,7 @@ async def server():
 
     # wait for server to start
     url = f"{settings.GATEWAY_ORIGIN}/health"
-    end_time = time.time() + CONTAINER_STARTUP_TIME.total_seconds() + 5
+    end_time = time.time() + CONTAINER_STARTUP_SECONDS + 5
 
     try:
         while time.time() < end_time:
@@ -48,14 +56,21 @@ async def server():
         await server_task
 
 
+@pytest.fixture(scope="function")
+def created_container_hostnames() -> set[str]:
+    """Track the hostnames of containers created in this test function."""
+    return set()
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def setup_container_engine_for_function():
-    """Initialize and clean up a container engine environment for testing."""
-    await _cleanup_container_engine(scope="function")
-
+async def setup_container_engine_for_function(created_container_hostnames: set[str]):
+    await _cleanup_container_engine(
+        scope="function", created_container_hostnames=created_container_hostnames
+    )
     yield
-
-    await _cleanup_container_engine(scope="function")
+    await _cleanup_container_engine(
+        scope="function", created_container_hostnames=created_container_hostnames
+    )
 
 
 @pytest_asyncio.fixture(autouse=True, scope="session")
@@ -72,23 +87,33 @@ async def setup_container_engine():
 @pytest.fixture(autouse=True)
 def reset_container_lock():
     """Reset the CONTAINER_LOCK for each test to avoid event loop binding issues."""
-    engine.CONTAINER_LOCK = aiorwlock.RWLock()
+    engine.CONTAINER_ENGINE_LOCK = aiorwlock.RWLock()
     yield
-    engine.CONTAINER_LOCK = aiorwlock.RWLock()
+    engine.CONTAINER_ENGINE_LOCK = aiorwlock.RWLock()
 
 
-async def _run_cmd(cmd: str):
-    process = await asyncio.create_subprocess_shell(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+@pytest.fixture(autouse=True)
+def track_created_containers(
+    monkeypatch: pytest.MonkeyPatch, created_container_hostnames: set[str]
+):
+    original_create_or_replace = ContainerManager._create_or_replace_container_impl  # type: ignore[reportPrivateUsage]
+
+    async def tracked_create_or_replace(
+        cls: type[ContainerManager], client: ContainerEngineClient, *, mount_dir: Path | None = None
+    ) -> str:
+        """Wrapper that tracks created containers."""
+        hostname = await original_create_or_replace(client, mount_dir=mount_dir)
+
+        # Track the created container hostname
+        created_container_hostnames.add(hostname)
+
+        return hostname
+
+    monkeypatch.setattr(
+        ContainerManager,
+        "_create_or_replace_container_impl",
+        classmethod(tracked_create_or_replace),
     )
-    output, error = await process.communicate()
-    exit_status = process.returncode
-    if exit_status != 0:
-        raise RuntimeError(
-            f"Command '{cmd}' failed with exit status: {exit_status}\n"
-            f"Output: {output.decode('utf-8')}\n"
-            f"Error: {error.decode('utf-8')}"
-        )
 
 
 async def _init_container_engine():
@@ -98,39 +123,43 @@ async def _init_container_engine():
     """
     await ContainerManager.pull_container_image()
 
-    cmd = f"DOCKER_HOST={get_container_engine_socket()} docker compose"
+    cmd = f"DOCKER_HOST={get_container_engine_socket(settings.CONTAINER_ENGINE)} docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
     cmd += " up -d"
-    await _run_cmd(cmd)
+    await run_cli("sh", "-c", cmd, timeout=10)
 
 
-async def _cleanup_container_engine(scope: Literal["function", "session"]):
+async def _cleanup_container_engine(
+    scope: Literal["function", "session"], created_container_hostnames: set[str] | None = None
+):
     """
     Cleanup docker environment.
-    For function scope, only cleanup SERVER_IMAGE containers.
+    For function scope, only cleanup containers created in the current test function.
     For session scope, cleanup all CONTAINER_PROJECT_NAME containers, networks and images.
     """
     logger.info("Cleanup docker environment")
-    docker = Docker(url=get_container_engine_socket())
-
-    label_filters = [f"com.docker.compose.project={settings.CONTAINER_PROJECT_NAME}"]
-    if scope == "function":
-        label_filters.append(f"com.docker.compose.service=mcp-getgather")
-    containers = await docker.containers.list(all=True, filters={"label": label_filters})  # type: ignore[reportUnknownMemberType]
-    await asyncio.gather(*[delete_container(container) for container in containers])
+    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
+        labels = {"com.docker.compose.project": settings.CONTAINER_PROJECT_NAME}
+        if scope == "function":
+            labels["com.docker.compose.service"] = "mcp-getgather"
+            for hostname in created_container_hostnames or {}:
+                await ContainerManager._purge_container(hostname, client=client)  # type: ignore[reportPrivateUsage]
+        else:
+            containers = await client.list_containers(labels=labels)
+            await client.delete_containers(*[container.id for container in containers])
+            await asyncio.to_thread(
+                shutil.rmtree, settings.container_mount_parent_dir, ignore_errors=True
+            )
 
     if scope == "session":
-        network_data_list = await docker.networks.list(filters={"label": label_filters})
-        for network_data in network_data_list:
-            network = DockerNetwork(docker, network_data["Id"])
-            await network.delete()
+        cmd = f"DOCKER_HOST={get_container_engine_socket(settings.CONTAINER_ENGINE)} docker compose"
+        if ENV_FILE:
+            cmd += f" --env-file {ENV_FILE}"
+        cmd += " down"
+        await run_cli("sh", "-c", cmd, timeout=20)
 
         try:
-            await docker.images.delete(CONTAINER_IMAGE_NAME, force=True)
+            await client.delete_image(CONTAINER_IMAGE_NAME)
         except:
             pass  # ignore image not found error
-
-    await docker.close()
-
-    shutil.rmtree(settings.container_mount_parent_dir, ignore_errors=True)
