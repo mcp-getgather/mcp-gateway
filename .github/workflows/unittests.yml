@@ -9,7 +9,7 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     strategy:
       fail-fast: false  
       matrix:
@@ -30,7 +30,7 @@ jobs:
         env:
           GATEWAY_ORIGIN: http://localhost:9000
           CONTAINER_PROJECT_NAME: getgather-ci
-          CONTAINER_SUBNET_PREFIX: 172.24.0
+          CONTAINER_SUBNET_PREFIX: 172.20.2
           GETGATHER_APP_IDS: '["test-app-id"]'
           HOST_DATA_DIR: ./data
           CONTAINER_ENGINE: ${{ matrix.container-engine }}

@@ -1,98 +1,34 @@
 import asyncio
 import platform
 import random
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import aiofiles
-from aiodocker import Docker
-from aiodocker.containers import DockerContainer
 from nanoid import generate
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 from src.auth.auth import AuthUser
-from src.container.engine import docker_client
+from src.container.container import Container
+from src.container.engine import ContainerEngineClient, engine_client
 from src.logs import logger
 from src.settings import settings
 
 UNASSIGNED_USER_ID = "UNASSIGNED"
 FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
-CONTAINER_STARTUP_TIME = timedelta(seconds=20)
 
 # "internal-net" is the network name used in docker-compose.yml
 # the full network name is prefixed by settings.CONTAINER_PROJECT_NAME
 CONTAINER_NETWORK_NAME = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
 
 CONTAINER_IMAGE_NAME = f"{settings.CONTAINER_PROJECT_NAME}_mcp-getgather"
+CONTAINER_STARTUP_SECONDS = 20
 
 
 class ContainerMetadata(BaseModel):
     user: AuthUser
-
-
-class Container(BaseModel):
-    """
-    Wrapper around a DockerContainer.
-    Container names are [USER_ID]-[HOSTNAME] or UNASSIGNED-[HOSTNAME]
-    """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    id: str
-    hostname: str
-    ip: str
-
-    container: DockerContainer = Field(exclude=True)
-
-    @classmethod
-    def from_docker(cls, container: DockerContainer) -> "Container":
-        info = container._container  # type: ignore[reportPrivateUsage]
-        return cls(
-            id=container.id[:12],
-            hostname=info["Name"].strip("/").split("-")[-1],
-            ip=info["NetworkSettings"]["Networks"][CONTAINER_NETWORK_NAME]["IPAddress"],
-            container=container,
-        )
-
-    @property
-    def info(self) -> dict[str, Any]:
-        """Return data of DockerContainer.show()."""
-        return self.container._container  # type: ignore[reportPrivateUsage]
-
-    @property
-    def ready(self) -> bool:
-        state: dict[str, Any] = self.info["State"]
-        if not state["Running"]:
-            return False
-
-        started_at = datetime.fromisoformat(state["StartedAt"].rstrip("Z")).replace(
-            tzinfo=timezone.utc
-        )
-        return datetime.now(timezone.utc) > started_at + CONTAINER_STARTUP_TIME
-
-    @classmethod
-    def name_for_user(cls, user: AuthUser | None, hostname: str) -> str:
-        return f"{user.user_id if user else UNASSIGNED_USER_ID}-{hostname}"
-
-    @property
-    def mount_dir(self) -> Path:
-        return self.mount_dir_for_hostname(self.hostname)
-
-    @classmethod
-    def mount_dir_for_hostname(cls, hostname: str) -> Path:
-        path = settings.container_mount_parent_dir / hostname
-        if not path.exists():
-            path.mkdir(parents=True, exist_ok=True)
-        return path
-
-    @property
-    def metadata_file(self) -> Path:
-        return self.metadata_file_for_hostname(self.hostname)
-
-    @classmethod
-    def metadata_file_for_hostname(cls, hostname: str) -> Path:
-        return cls.mount_dir_for_hostname(hostname) / "metadata.json"
 
 
 class ContainerManager:
@@ -123,9 +59,9 @@ class ContainerManager:
         """Get the container of the user. Assign one if not exists."""
         container = await cls._get_container(user.user_id)
         if not container:
-            async with docker_client(lock="write") as docker:
-                container = await cls._assign_container(user, docker=docker)
-                await cls.backfill_container_pool(docker=docker)
+            async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
+                container = await cls._assign_container(user, client=client)
+                await cls.backfill_container_pool(client=client)
         return container
 
     @classmethod
@@ -142,80 +78,70 @@ class ContainerManager:
     @classmethod
     async def reload_containers(cls, *, state: Literal["all", "stopped"] = "stopped"):
         mount_dirs = cls._get_mount_dirs()
-        async with docker_client(lock="write") as docker:
+        async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
             if state == "stopped":
-                running_containers = await cls._get_containers(docker=docker)
+                running_containers = await cls._get_containers(client=client)
                 running_dirs = set(container.mount_dir for container in running_containers)
                 mount_dirs = [item for item in mount_dirs if item not in running_dirs]
 
-            await asyncio.gather(
-                *[
-                    cls._create_or_replace_container(mount_dir=item, docker=docker)
-                    for item in mount_dirs
-                ],
-            )
+            for item in mount_dirs:
+                await cls._create_or_replace_container(mount_dir=item, client=client)
             logger.info(f"Reloaded {len(mount_dirs)} containers")
 
-            await cls.backfill_container_pool(docker=docker)
+            await cls.backfill_container_pool(client=client)
 
     @classmethod
-    async def backfill_container_pool(cls, *, docker: Docker | None = None):
-        async with docker_client(docker, lock="write") as _docker:
+    async def backfill_container_pool(cls, *, client: ContainerEngineClient | None = None):
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="write"
+        ) as _client:
             containers = await cls._get_containers(
-                partial_name=UNASSIGNED_USER_ID, docker=_docker, only_ready=False
+                partial_name=UNASSIGNED_USER_ID, client=_client, only_ready=False
             )
             num = settings.MIN_CONTAINER_POOL_SIZE - len(containers)
             if num <= 0:
                 return
             logger.info(f"Backfill container pool with {num} containers")
-            await asyncio.gather(*[
-                cls._create_or_replace_container(docker=_docker) for _ in range(num)
-            ])
+
+            # run sequentially to avoid overwhelming the container engine
+            for _ in range(num):
+                await cls._create_or_replace_container(client=_client)
 
     @classmethod
     async def pull_container_image(cls):
         source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
         logger.info(f"Pulling container image from {source_image}")
-        async with docker_client() as docker:
-            await docker.images.pull(source_image)
-            await docker.images.tag(source_image, repo=CONTAINER_IMAGE_NAME)
+        async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
+            await client.pull_image(source_image, tag=CONTAINER_IMAGE_NAME)
 
     @classmethod
     async def _get_containers(
         cls,
         *,
         partial_name: str | None = None,
-        docker: Docker | None = None,
+        client: ContainerEngineClient | None = None,
         only_ready: bool = True,
     ) -> list[Container]:
-        filters = {
-            "label": [
-                f"com.docker.compose.project={settings.CONTAINER_PROJECT_NAME}",
-                f"com.docker.compose.service=mcp-getgather",
-            ]
-        }
-        if partial_name:
-            filters["name"] = [partial_name]
-
-        async with docker_client(docker, lock="read") as docker:
-            containers = await docker.containers.list(filters=filters)  # type: ignore[reportUnknownMemberType]
-            # load info for all containers
-            await asyncio.gather(*[
-                container.show()  # type: ignore[reportUnknownMemberType]
-                for container in containers
-            ])
-
-        containers = [Container.from_docker(container) for container in containers]
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="read"
+        ) as _client:
+            containers = await _client.list_containers(
+                partial_name=partial_name,
+                labels={
+                    "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
+                    "com.docker.compose.service": "mcp-getgather",
+                },
+            )
         if only_ready:
-            containers = [c for c in containers if c.ready]
+            containers = [c for c in containers if await cls._is_container_ready(c)]
         return containers
 
     @classmethod
     async def _get_container(
-        cls, partial_name: str, *, docker: Docker | None = None
+        cls, partial_name: str, *, client: ContainerEngineClient | None = None
     ) -> Container | None:
         containers = await cls._get_containers(
-            partial_name=partial_name, docker=docker, only_ready=False
+            partial_name=partial_name, client=client, only_ready=False
         )
         if len(containers) > 1:
             raise ValueError(
@@ -224,8 +150,8 @@ class ContainerManager:
         return containers[0] if containers else None
 
     @classmethod
-    async def _get_random_unassigned_container(cls, docker: Docker | None = None):
-        containers = await cls._get_containers(partial_name=UNASSIGNED_USER_ID, docker=docker)
+    async def _get_random_unassigned_container(cls, client: ContainerEngineClient | None = None):
+        containers = await cls._get_containers(partial_name=UNASSIGNED_USER_ID, client=client)
         if not containers:
             raise RuntimeError("No unassigned containers found")
         container = random.choice(containers)
@@ -247,13 +173,15 @@ class ContainerManager:
 
     @classmethod
     async def _create_or_replace_container(
-        cls, *, mount_dir: Path | None = None, docker: Docker | None = None
+        cls, *, mount_dir: Path | None = None, client: ContainerEngineClient | None = None
     ):
         # catch all exceptions in _create_or_replace_container_impl,
         # docker_client handles raise based on whether it's nested or not
-        async with docker_client(docker, lock="write") as _docker:
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="write"
+        ) as _client:
             try:
-                return await cls._create_or_replace_container_impl(_docker, mount_dir=mount_dir)
+                return await cls._create_or_replace_container_impl(_client, mount_dir=mount_dir)
             except Exception as e:
                 logger.error(
                     f"Failed to create or reload container for mount_dir: {mount_dir}: {e}"
@@ -262,7 +190,7 @@ class ContainerManager:
 
     @classmethod
     async def _create_or_replace_container_impl(
-        cls, docker: Docker, *, mount_dir: Path | None = None
+        cls, client: ContainerEngineClient, *, mount_dir: Path | None = None
     ):
         """Create a fresh container for UNASSIGNED user or load from a mount_dir for an existing user."""
         if mount_dir is None:
@@ -273,81 +201,105 @@ class ContainerManager:
             metadata = await cls._read_metadata(hostname)
             user = metadata.user if metadata else None
 
-        container_name = Container.name_for_user(user, hostname)
+        container_name = cls._container_name_for_user(hostname, user=user)
 
         src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
 
-        config: dict[str, Any] = {
-            "Image": CONTAINER_IMAGE_NAME,
-            "User": "root",
-            "Env": [
-                f"ENVIRONMENT={settings.GATEWAY_ORIGIN}",
-                f"LOGFIRE_TOKEN={settings.LOGFIRE_TOKEN}",
-                f"LOG_LEVEL={settings.LOG_LEVEL}",
-                f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
-                f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
-                f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
-                f"SENTRY_DSN={settings.CONTAINER_SENTRY_DSN}",
-                f"DATA_DIR={dst_data_dir}",
-                f"HOSTNAME={hostname}",
-                "PORT=80",
-            ],
-            "HostConfig": {
-                "Binds": [f"{src_data_dir}:{dst_data_dir}:rw"],
-                "CapAdd": ["NET_BIND_SERVICE"],
-            },
-            "NetworkingConfig": {
-                "EndpointsConfig": {CONTAINER_NETWORK_NAME: {"Aliases": [hostname]}}
-            },
-            "Labels": {
-                "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
-                "com.docker.compose.service": "mcp-getgather",
-            },
+        env = {
+            "ENVIRONMENT": settings.GATEWAY_ORIGIN,
+            "LOGFIRE_TOKEN": settings.LOGFIRE_TOKEN,
+            "LOG_LEVEL": settings.LOG_LEVEL,
+            "HOSTNAME": hostname,
+            "BROWSER_TIMEOUT": settings.BROWSER_TIMEOUT,
+            "DEFAULT_PROXY_TYPE": settings.DEFAULT_PROXY_TYPE,
+            "PROXIES_CONFIG": settings.PROXIES_CONFIG,
+            "SENTRY_DSN": settings.CONTAINER_SENTRY_DSN,
+            "DATA_DIR": dst_data_dir,
+            "PORT": "80",
         }
+        labels = {
+            "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
+            "com.docker.compose.service": "mcp-getgather",
+        }
+        cap_add = ["NET_BIND_SERVICE"]
+        cmd = None
 
         # If host is not macOS, container needs the tailscale router to access proxy service,
         # so we need to override the entrypoint to install iproute2 and add tailscale routing.
         # The container also needs NET_ADMIN capabilities
         if platform.system() != "Darwin":
-            config.update({
-                "Entrypoint": ["/bin/sh", "-c"],
-                "Cmd": [
-                    f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} &&"
-                    " exec /app/entrypoint.sh"
-                ],
-            })
-            config["HostConfig"]["CapAdd"].extend(["NET_ADMIN"])
+            cmd = [
+                "/bin/sh",
+                "-c",
+                f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} && exec /app/entrypoint.sh",
+            ]
+            cap_add.append("NET_ADMIN")
 
-        container = await docker.containers.create_or_replace(container_name, config)
-        await container.start()  # type: ignore[reportUnknownMemberType]
-        logger.info(f"Created or reloaded container hostname: {hostname}, id: {container.id[:12]}")
+        container = await client.create_or_replace_container(
+            name=container_name,
+            hostname=hostname,
+            user="root",
+            image=CONTAINER_IMAGE_NAME,
+            envs=env,
+            volumes=[f"{src_data_dir}:{dst_data_dir}:rw"],
+            labels=labels,
+            cap_adds=cap_add,
+            cmd=cmd,
+        )
+        logger.info(f"Created or reloaded container hostname: {hostname}, id: {container.id}")
         return hostname
 
     @classmethod
-    async def _assign_container(cls, user: AuthUser, *, docker: Docker | None = None):
-        async with docker_client(docker, lock="write") as docker:
+    async def _assign_container(
+        cls, user: AuthUser, *, client: ContainerEngineClient | None = None
+    ):
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="write"
+        ) as _client:
             # rename the container to [AuthUser.user_id]-[HOSTNAME]
-            container = await cls._get_random_unassigned_container(docker)
-            assigned_container_name = f"{user.user_id}-{container.hostname}"
-            await container.container.rename(assigned_container_name)  # type: ignore[reportUnknownMemberType]
+            container = await cls._get_random_unassigned_container(client)
+            assigned_container_name = cls._container_name_for_user(container.hostname, user=user)
+            await _client.rename_container(container.id, assigned_container_name)
 
             await cls._write_metadata(container, user)
 
-            if platform.system() != "Darwin":
-                exec = await container.container.exec([
-                    "ip",
-                    "route",
-                    "add",
-                    "100.64.0.0/10",
-                    "via",
-                    cls._tailscale_router_ip(),
-                ])
-                await exec.start(detach=True)
+            # if platform.system() != "Darwin":
+            #     exec = await _client.exec([
+            #         "ip",
+            #         "route",
+            #         "add",
+            #         "100.64.0.0/10",
+            #         "via",
+            #         cls._tailscale_router_ip(),
+            #     ])
+            #     await exec.start(detach=True)
 
             logger.info(f"Assigned container {container.id} to {user.user_id}")
 
         return container
+
+    @classmethod
+    async def _purge_container(cls, hostname: str, *, client: ContainerEngineClient | None = None):
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="write"
+        ) as _client:
+            container = await _client.get_container(name=hostname)
+            await _client.delete_container(container.id)
+            await asyncio.to_thread(shutil.rmtree, container.mount_dir)
+
+    @classmethod
+    async def _is_container_ready(cls, container: Container) -> bool:
+        if container.status != "running":
+            return False
+
+        return datetime.now(timezone.utc) > container.started_at + timedelta(
+            seconds=CONTAINER_STARTUP_SECONDS
+        )
+
+    @classmethod
+    def _container_name_for_user(cls, hostname: str, *, user: AuthUser | None = None) -> str:
+        return f"{user.user_id if user else UNASSIGNED_USER_ID}-{hostname}"
 
     @classmethod
     async def _write_metadata(cls, container: Container, user: AuthUser):

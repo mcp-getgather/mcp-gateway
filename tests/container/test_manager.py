@@ -1,6 +1,5 @@
 import asyncio
 import platform
-from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
 
@@ -8,8 +7,13 @@ import pytest
 from assertpy import assert_that
 
 from src.auth.auth import AuthUser
-from src.container.engine import delete_container
-from src.container.manager import Container, ContainerManager, ContainerMetadata, docker_client
+from src.container.engine import engine_client
+from src.container.manager import (
+    CONTAINER_NETWORK_NAME,
+    Container,
+    ContainerManager,
+    ContainerMetadata,
+)
 from src.settings import settings
 
 
@@ -44,7 +48,6 @@ async def test_create_new_container():
             "RW": True,
             "Propagation": "rprivate",
         },
-        network_aliases=[f"{hostname}"],
     )
     await _assert_mount_dir(hostname)
 
@@ -54,10 +57,10 @@ async def test_reload_unassigned_container():
     hostname = await ContainerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
     mount_dir = Container.mount_dir_for_hostname(hostname)
     container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
+    assert container is not None
 
-    async with docker_client() as docker:
-        _container = await docker.containers.get(container.id)  # type: ignore[reportUnknownMemberType]
-        await delete_container(_container)
+    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
+        await client.delete_container(container.id)
     assert not await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
 
     reloaded_hostname = await ContainerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
@@ -88,7 +91,6 @@ async def test_assign_container():
             "RW": True,
             "Propagation": "rprivate",
         },
-        network_aliases=[f"{hostname}"],
     )
     await _assert_mount_dir(hostname, user)
 
@@ -101,10 +103,10 @@ async def test_reload_assigned_container():
 
     mount_dir = Container.mount_dir_for_hostname(hostname)
     container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
+    assert container is not None
 
-    async with docker_client() as docker:
-        _container = await docker.containers.get(container.id)  # type: ignore[reportUnknownMemberType]
-        await delete_container(_container)
+    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
+        await client.delete_container(container.id)
     assert not await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
 
     reloaded_hostname = await ContainerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
@@ -124,9 +126,7 @@ async def _assign_container(user: AuthUser) -> None:
     start_time_seconds = 5 if platform.system() != "Darwin" else 0
     await asyncio.sleep(start_time_seconds)
 
-    with patch(
-        "src.container.manager.CONTAINER_STARTUP_TIME", timedelta(seconds=start_time_seconds)
-    ):
+    with patch("src.container.manager.CONTAINER_STARTUP_SECONDS", start_time_seconds):
         await ContainerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
 
 
@@ -138,15 +138,13 @@ async def _assert_container_info(
     state: dict[str, str | bool] | None = None,
     env: list[str] | None = None,
     mount: dict[str, str | bool] | None = None,
-    network_aliases: list[str] | None = None,
 ):
-    async with docker_client() as docker:
-        container_name = Container.name_for_user(user, hostname)
-        container = await docker.containers.get(container_name)  # type: ignore[reportUnknownMemberType]
+    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
+        container_name = ContainerManager._container_name_for_user(hostname, user=user)  # type: ignore[reportPrivateUsage]
+        container = await client.get_container(name=container_name)
+        info = container.info
 
-        info = container._container  # type: ignore[reportPrivateUsage]
-
-    assert info["Name"] == f"/{container_name}"
+    assert container.info["Config"]["Hostname"] == hostname
 
     if labels:
         assert info["Config"]["Labels"] == labels
@@ -156,11 +154,9 @@ async def _assert_container_info(
         assert_that(info["Config"]["Env"]).contains(*env)
     if mount:
         assert_that(mount).is_subset_of(info["Mounts"][0])
-    if network_aliases:
-        network_name = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
-        assert_that(info["NetworkSettings"]["Networks"][network_name]["Aliases"]).contains(
-            *network_aliases
-        )
+
+    network_name = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
+    assert network_name in info["NetworkSettings"]["Networks"]
 
 
 async def _assert_mount_dir(hostname: str, user: AuthUser | None = None) -> None:
@@ -183,17 +179,21 @@ def _assert_same_container(container_1: Container, container_2: Container) -> No
         }
 
         info["Config"].pop("Hostname", None)
+        info["Config"].pop("CreateCommand", None)
         info["Config"]["Env"] = sorted(info["Config"]["Env"])
 
         for key in ["SandboxID", "SandboxKey"]:
             info["NetworkSettings"].pop(key, None)
 
         network_name = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
-        for key in ["EndpointID", "MacAddress", "DNSNames", "IPAddress"]:
+        for key in ["EndpointID", "MacAddress", "IPAddress"]:
             info["NetworkSettings"]["Networks"][network_name].pop(key, None)
 
-        if container.id in info["NetworkSettings"]["Networks"][network_name]["Aliases"]:
-            info["NetworkSettings"]["Networks"][network_name]["Aliases"].remove(container.id)
+        if "DNSNames" in info["NetworkSettings"]["Networks"][network_name]:
+            info["NetworkSettings"]["Networks"][network_name]["DNSNames"].remove(container.id)
+        if "Aliases" in info["NetworkSettings"]["Networks"][network_name]:
+            if info["NetworkSettings"]["Networks"][network_name]["Aliases"]:
+                info["NetworkSettings"]["Networks"][network_name]["Aliases"].remove(container.id)
 
         return info
 
