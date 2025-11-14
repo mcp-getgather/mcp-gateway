@@ -264,16 +264,16 @@ class ContainerManager:
 
             await cls._write_metadata(container, user)
 
-            # if platform.system() != "Darwin":
-            #     exec = await _client.exec([
-            #         "ip",
-            #         "route",
-            #         "add",
-            #         "100.64.0.0/10",
-            #         "via",
-            #         cls._tailscale_router_ip(),
-            #     ])
-            #     await exec.start(detach=True)
+            if platform.system() != "Darwin":
+                await _client.exec(
+                    container.id,
+                    "ip",
+                    "route",
+                    "add",
+                    "100.64.0.0/10",
+                    "via",
+                    cls._tailscale_router_ip(),
+                )
 
             logger.info(f"Assigned container {container.id} to {user.user_id}")
 

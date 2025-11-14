@@ -29,10 +29,10 @@ class ContainerEngineClient:
         self.socket = get_container_engine_socket(engine)
         self.startup_seconds = startup_seconds
 
-    async def run(self, *args: str, timeout: float = 2) -> str:
-        env = None
+    async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 2) -> str:
+        env = env or {}
         if platform.system() != "Darwin":
-            env = {"DOCKER_HOST": self.socket}
+            env["DOCKER_HOST"] = self.socket
             if self.engine == "podman":
                 env["CONTAINER_HOST"] = self.socket
         return await run_cli(self.engine, *args, env=env, timeout=timeout)
@@ -180,6 +180,9 @@ class ContainerEngineClient:
 
     async def delete_image(self, image: str):
         await self.run("image", "rm", "--force", image)
+
+    async def exec(self, id: str, cmd: str, *args: str, env: dict[str, str] | None = None):
+        await self.run("exec", "-d", id, cmd, *args, env=env)
 
 
 @asynccontextmanager
