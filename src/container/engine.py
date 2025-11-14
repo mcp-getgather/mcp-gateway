@@ -30,8 +30,8 @@ class ContainerEngineClient:
         self.startup_seconds = startup_seconds
 
     async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 2) -> str:
-        env = env or {}
         if platform.system() != "Darwin":
+            env = env or {}
             env["DOCKER_HOST"] = self.socket
             if self.engine == "podman":
                 env["CONTAINER_HOST"] = self.socket
@@ -95,6 +95,7 @@ class ContainerEngineClient:
         hostname: str,
         user: str,
         image: str,
+        entrypoint: str | None = None,
         cmd: list[str] | None = None,
         envs: dict[str, Any] | None = None,
         volumes: list[str] | None = None,
@@ -118,6 +119,8 @@ class ContainerEngineClient:
             for cap in cap_adds:
                 args.extend(["--cap-add", cap])
         args.extend(["--network", self.network])
+        if entrypoint:
+            args.extend(["--entrypoint", entrypoint])
         args.append(image)
         if cmd:
             args.extend(cmd)
@@ -133,6 +136,7 @@ class ContainerEngineClient:
         hostname: str,
         user: str,
         image: str,
+        entrypoint: str | None = None,
         cmd: list[str] | None = None,
         envs: dict[str, Any] | None = None,
         volumes: list[str] | None = None,
@@ -151,6 +155,7 @@ class ContainerEngineClient:
             hostname=hostname,
             user=user,
             image=image,
+            entrypoint=entrypoint,
             cmd=cmd,
             envs=envs,
             volumes=volumes,
