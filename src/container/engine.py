@@ -30,7 +30,12 @@ class ContainerEngineClient:
         self.startup_seconds = startup_seconds
 
     async def run(self, *args: str, timeout: float = 2) -> str:
-        return await run_cli(self.engine, *args, timeout=timeout)
+        env = None
+        if platform.system() != "Darwin":
+            env = {"DOCKER_HOST": self.socket}
+            if self.engine == "podman":
+                env["CONTAINER_HOST"] = self.socket
+        return await run_cli(self.engine, *args, env=env, timeout=timeout)
 
     async def list_containers(
         self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
@@ -268,7 +273,11 @@ class CLIOnError(Protocol):
 
 
 async def run_cli(
-    cmd: str, *args: str, timeout: float = 2, on_error: CLIOnError | None = None
+    cmd: str,
+    *args: str,
+    env: dict[str, str] | None = None,
+    timeout: float = 2,
+    on_error: CLIOnError | None = None,
 ) -> str:
     """
     Run a command asynchronously and return the stdout.
@@ -276,23 +285,27 @@ async def run_cli(
     Use on_error to handle errors.
     """
     process = await asyncio.create_subprocess_exec(
-        cmd, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
+
+    cmd_msg = f"Command: {cmd} {' '.join(args)}"
+    if env:
+        cmd_msg += f"\nEnv: {json.dumps(env)}"
 
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         process.kill()
         await process.wait()
-        raise Exception(f"CLI timeout after {timeout} seconds\nCommand: {cmd} {' '.join(args)}")
+        raise Exception(f"CLI timed out after {timeout} seconds\n{cmd_msg}")
 
     returncode, error = process.returncode, stderr.decode().strip()
     if on_error:
         returncode, error = on_error(returncode, error)
 
-    logger.debug(f"Executed CLI '{cmd} {' '.join(args)}', return code: {returncode}")
+    logger.debug(f"CLI return code: {returncode}\n{cmd_msg}")
 
     if returncode != 0:
-        raise Exception(f"CLI failed: {error}\nCommand: {cmd} {' '.join(args)}")
+        raise Exception(f"CLI failed: {error}\n{cmd_msg}")
 
     return stdout.decode().strip()

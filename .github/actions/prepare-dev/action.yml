@@ -37,9 +37,6 @@ runs:
         sleep 2
         sudo chmod 666 /run/podman/podman.sock
 
-        echo "DOCKER_HOST=unix:///run/podman/podman.sock" >> $GITHUB_ENV
-        echo "CONTAINER_HOST=unix:///run/podman/podman.sock" >> $GITHUB_ENV
-
     - name: Docker pull mcp-getgather image
       shell: bash
       if: ${{ env.CONTAINER_ENGINE == 'docker' }}
@@ -48,4 +45,4 @@ runs:
     - name: Podman pull mcp-getgather image
       shell: bash
       if: ${{ env.CONTAINER_ENGINE == 'podman' }}
-      run: podman image pull ghcr.io/mcp-getgather/mcp-getgather
+      run: sudo podman image pull ghcr.io/mcp-getgather/mcp-getgather
