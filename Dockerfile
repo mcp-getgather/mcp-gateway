@@ -1,5 +1,5 @@
 # Stage 1: Build the application
-FROM mirror.gcr.io/library/python:3.13-slim-bookworm AS builder
+FROM mirror.gcr.io/library/python:3.13-slim-trixie AS builder
 
 WORKDIR /app
 
@@ -26,7 +26,11 @@ COPY src /app/src
 RUN uv sync --frozen --no-dev
 
 # Stage 2: Final image
-FROM mirror.gcr.io/library/python:3.13-slim-bookworm
+FROM mirror.gcr.io/library/python:3.13-slim-trixie
+
+RUN apt-get update && \
+    apt-get install -y podman && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

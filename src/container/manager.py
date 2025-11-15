@@ -222,29 +222,31 @@ class ContainerManager:
             "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
             "com.docker.compose.service": "mcp-getgather",
         }
-        cap_add = ["NET_BIND_SERVICE"]
+        cap_adds = ["NET_BIND_SERVICE"]
+        entrypoint = None
         cmd = None
 
         # If host is not macOS, container needs the tailscale router to access proxy service,
         # so we need to override the entrypoint to install iproute2 and add tailscale routing.
         # The container also needs NET_ADMIN capabilities
         if platform.system() != "Darwin":
+            entrypoint = "/bin/sh"
             cmd = [
-                "/bin/sh",
                 "-c",
                 f"ip route add 100.64.0.0/10 via {cls._tailscale_router_ip()} && exec /app/entrypoint.sh",
             ]
-            cap_add.append("NET_ADMIN")
+            cap_adds.append("NET_ADMIN")
 
         container = await client.create_or_replace_container(
             name=container_name,
             hostname=hostname,
             user="root",
             image=CONTAINER_IMAGE_NAME,
+            entrypoint=entrypoint,
             envs=env,
             volumes=[f"{src_data_dir}:{dst_data_dir}:rw"],
             labels=labels,
-            cap_adds=cap_add,
+            cap_adds=cap_adds,
             cmd=cmd,
         )
         logger.info(f"Created or reloaded container hostname: {hostname}, id: {container.id}")
@@ -263,17 +265,6 @@ class ContainerManager:
             await _client.rename_container(container.id, assigned_container_name)
 
             await cls._write_metadata(container, user)
-
-            # if platform.system() != "Darwin":
-            #     exec = await _client.exec([
-            #         "ip",
-            #         "route",
-            #         "add",
-            #         "100.64.0.0/10",
-            #         "via",
-            #         cls._tailscale_router_ip(),
-            #     ])
-            #     await exec.start(detach=True)
 
             logger.info(f"Assigned container {container.id} to {user.user_id}")
 
