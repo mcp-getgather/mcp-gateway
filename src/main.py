@@ -64,7 +64,9 @@ def create_app():
             return RedirectResponse(url=result.auth_url)
         else:
             # TODO: return a web pageinstead of json
-            return JSONResponse(status_code=200, content=result.model_dump(exclude_none=True))
+            return JSONResponse(
+                status_code=200, content=result.model_dump(exclude_none=True, mode="json")
+            )
 
     @app.get("/client/auth/callback")
     async def client_auth_callback(code: str, state: str):  # type: ignore[reportUnusedFunction]
