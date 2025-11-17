@@ -29,10 +29,10 @@ class ContainerEngineClient:
         self.socket = get_container_engine_socket(engine)
         self.startup_seconds = startup_seconds
 
-    async def run(self, *args: str, timeout: float = 2) -> str:
-        env = None
+    async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 2) -> str:
         if platform.system() != "Darwin":
-            env = {"DOCKER_HOST": self.socket}
+            env = env or {}
+            env["DOCKER_HOST"] = self.socket
             if self.engine == "podman":
                 env["CONTAINER_HOST"] = self.socket
         return await run_cli(self.engine, *args, env=env, timeout=timeout)
@@ -95,6 +95,7 @@ class ContainerEngineClient:
         hostname: str,
         user: str,
         image: str,
+        entrypoint: str | None = None,
         cmd: list[str] | None = None,
         envs: dict[str, Any] | None = None,
         volumes: list[str] | None = None,
@@ -118,6 +119,8 @@ class ContainerEngineClient:
             for cap in cap_adds:
                 args.extend(["--cap-add", cap])
         args.extend(["--network", self.network])
+        if entrypoint:
+            args.extend(["--entrypoint", entrypoint])
         args.append(image)
         if cmd:
             args.extend(cmd)
@@ -133,6 +136,7 @@ class ContainerEngineClient:
         hostname: str,
         user: str,
         image: str,
+        entrypoint: str | None = None,
         cmd: list[str] | None = None,
         envs: dict[str, Any] | None = None,
         volumes: list[str] | None = None,
@@ -151,6 +155,7 @@ class ContainerEngineClient:
             hostname=hostname,
             user=user,
             image=image,
+            entrypoint=entrypoint,
             cmd=cmd,
             envs=envs,
             volumes=volumes,
@@ -180,6 +185,9 @@ class ContainerEngineClient:
 
     async def delete_image(self, image: str):
         await self.run("image", "rm", "--force", image)
+
+    async def exec(self, id: str, cmd: str, *args: str, env: dict[str, str] | None = None):
+        await self.run("exec", "-d", id, cmd, *args, env=env)
 
 
 @asynccontextmanager
