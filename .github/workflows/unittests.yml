@@ -31,7 +31,7 @@ jobs:
           GATEWAY_ORIGIN: http://localhost:9000
           CONTAINER_PROJECT_NAME: getgather-ci
           CONTAINER_SUBNET_PREFIX: 172.20.2
-          GETGATHER_APP_IDS: '["test-app-id"]'
+          GETGATHER_APPS: '{"test-app-key":"test-app-name"}'
           HOST_DATA_DIR: ./data
           CONTAINER_ENGINE: ${{ matrix.container-engine }}
           OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
