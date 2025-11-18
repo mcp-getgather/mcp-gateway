@@ -11,25 +11,25 @@ from src.settings import settings
 @pytest.mark.asyncio
 async def test_mcp_getgather_auth(server: Server):
     user_id = "test_user_id"
-    app_id = list(settings.GETGATHER_APP_IDS)[0]
+    app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
     url = f"{settings.GATEWAY_ORIGIN}/mcp-media"
-    headers = {"Authorization": f"Bearer {GETGATHER_OATUH_TOKEN_PREFIX}_{app_id}_{user_id}"}
+    headers = {"Authorization": f"Bearer {GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}"}
     async with streamablehttp_client(url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool("get_user_info")
 
     assert result.structuredContent == AuthUser(
-        sub=user_id, auth_provider="getgather", app_id=app_id
+        sub=user_id, auth_provider="getgather", app_name=app_name
     ).model_dump(exclude_none=True)
 
 
 @pytest.mark.asyncio
 async def test_npr(server: Server):
     user_id = "test_user_id"
-    app_id = list(settings.GETGATHER_APP_IDS)[0]
+    app_key = list(settings.GETGATHER_APPS.keys())[0]
     url = f"{settings.GATEWAY_ORIGIN}/mcp-npr"
-    headers = {"Authorization": f"Bearer {GETGATHER_OATUH_TOKEN_PREFIX}_{app_id}_{user_id}"}
+    headers = {"Authorization": f"Bearer {GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}"}
     async with streamablehttp_client(url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()

@@ -105,7 +105,7 @@ class AuthUser(BaseModel):
     email: str | None = None
 
     # getgather specific
-    app_id: str | None = None
+    app_name: str | None = None
 
     @property
     def user_id(self) -> str:
@@ -122,11 +122,11 @@ def get_auth_user() -> AuthUser:
     name = token.claims.get("name")
     login = token.claims.get("login")
     email = token.claims.get("email")
-    app_id = token.claims.get("app_id")
+    app_name = token.claims.get("app_name")
     provider = token.claims.get("auth_provider")
     if not sub or not provider:
         raise RuntimeError("Missing sub or provider in auth token")
 
     return AuthUser(
-        sub=sub, auth_provider=provider, name=name, login=login, email=email, app_id=app_id
+        sub=sub, auth_provider=provider, name=name, login=login, email=email, app_name=app_name
     )
