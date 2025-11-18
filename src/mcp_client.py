@@ -62,6 +62,8 @@ class OAuthData:
 
     # for /token flow
     state: str | None = None
+    client_id: str | None = None
+    code_challenge: str | None = None
     code: str | None = None
     code_ready: asyncio.Event = field(default_factory=asyncio.Event)
     token_storage: InMemoryTokenStorage = field(default_factory=InMemoryTokenStorage)
@@ -118,12 +120,16 @@ async def _auth_and_connect(
         """
         params = parse_qs(urlparse(auth_url).query)
         state = params.get("state", [None])[0]
+        client_id = params.get("client_id", [None])[0]
+        code_challenge = params.get("code_challenge", [None])[0]
         if state is None:
             raise ValueError("Missing state in redirect URL")
 
         _oauth_states[state] = oauth_data
 
         oauth_data.state = state
+        oauth_data.client_id = client_id
+        oauth_data.code_challenge = code_challenge
         oauth_data.auth_url = auth_url
         oauth_data.auth_url_ready.set()
 
