@@ -3,7 +3,7 @@ import json
 import platform
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, NamedTuple, Protocol
 
 import aiorwlock
 
@@ -13,8 +13,12 @@ from src.settings import settings
 
 CONTAINER_ENGINE_LOCK = aiorwlock.RWLock()
 
+ContainerBasicInfo = NamedTuple("ContainerBasicInfo", [("id", str), ("name", str)])
+
 
 class ContainerEngineClient:
+    """Wrapper for docker/podman CLI."""
+
     def __init__(
         self,
         engine: Literal["docker", "podman"],
@@ -37,9 +41,10 @@ class ContainerEngineClient:
                 env["CONTAINER_HOST"] = self.socket
         return await run_cli(self.engine, *args, env=env, timeout=timeout)
 
-    async def list_containers(
+    async def list_containers_basic(
         self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
-    ) -> list[Container]:
+    ) -> list[ContainerBasicInfo]:
+        """List all containers, including stopped ones."""
         filters: list[str] = []
         if partial_name:
             filters.append(f"name={partial_name}")
@@ -50,8 +55,18 @@ class ContainerEngineClient:
         for filter in filters:
             args.extend(["--filter", filter])
 
-        result = await self.run("container", "ls", *args, "--format", "{{.ID}}")
-        ids = result.splitlines()
+        result = await self.run("container", "ls", "--all", *args, "--format", "{{.ID}} {{.Names}}")
+        infos: list[ContainerBasicInfo] = []
+        for line in result.splitlines():
+            id, name = line.split(" ")
+            infos.append(ContainerBasicInfo(id=id, name=name))
+        return infos
+
+    async def list_containers(
+        self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
+    ) -> list[Container]:
+        basic_infos = await self.list_containers_basic(partial_name=partial_name, labels=labels)
+        ids = [item.id for item in basic_infos]
         if not ids:
             return []
         infos = await self.inspect_containers(*ids)
@@ -162,6 +177,21 @@ class ContainerEngineClient:
             labels=labels,
             cap_adds=cap_adds,
         )
+
+    async def start_container(self, id: str):
+        await self.run("container", "start", id)
+
+    async def checkpoint_container(self, id: str):
+        await self.run("container", "checkpoint", id)
+
+    async def restore_container(self, id: str):
+        await self.run("container", "restore", id)
+
+    async def connect_network(self, network_name: str, id: str):
+        await self.run("network", "connect", network_name, id)
+
+    async def disconnect_network(self, network_name: str, id: str):
+        await self.run("network", "disconnect", network_name, id)
 
     async def delete_container(self, id: str):
         await self.delete_containers(id)

@@ -38,9 +38,11 @@ class WebProxyMiddleware(BaseHTTPMiddleware):
     async def _proxy_request(self, request: Request, container: Container) -> Response:
         path = request.url.path
         analytics.track(container.hostname, "web_request", {"path": path})  # type: ignore[reportUnknownMemberType]
-        logger.info(f"Proxy web request {path} to container {container.hostname} ({container.ip})")
+        logger.info(
+            f"Proxy web request {path} to container {container.hostname} ({container.validated_ip})"
+        )
 
-        url = f"http://{container.ip}{request.url.path}"
+        url = f"http://{container.validated_ip}{request.url.path}"
         if request.url.query:
             url += f"?{request.url.query}"
 

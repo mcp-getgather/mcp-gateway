@@ -1,26 +1,30 @@
 import asyncio
 import shutil
 import time
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import aiorwlock
 import httpx
 import pytest
 import pytest_asyncio
+from uvicorn import Server
 
 from src.container import engine
+from src.container.container import Container
 from src.container.engine import (
     ContainerEngineClient,
     engine_client,
     get_container_engine_socket,
     run_cli,
 )
-from src.container.manager import (
+from src.container.manager import ContainerManager
+from src.container.service import (
     CONTAINER_IMAGE_NAME,
     CONTAINER_NETWORK_NAME,
     CONTAINER_STARTUP_SECONDS,
-    ContainerManager,
+    ContainerService,
 )
 from src.logs import logger
 from src.main import create_server
@@ -28,32 +32,42 @@ from src.settings import ENV_FILE, settings
 
 
 @pytest_asyncio.fixture(scope="function")
-async def server():
-    server = await create_server()
-    server_task = asyncio.create_task(server.serve())
+async def server(server_factory: Callable[[], AsyncGenerator[Server, None]]):
+    async for server in server_factory():
+        yield server
+        break
 
-    # wait for server to start
-    url = f"{settings.GATEWAY_ORIGIN}/health"
-    end_time = time.time() + CONTAINER_STARTUP_SECONDS + 5
 
-    try:
-        while time.time() < end_time:
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, timeout=1.0)
-                    if response.is_success:
-                        yield server
-                        break
-            except httpx.RequestError:
-                pass
-            time.sleep(1)
-        else:
-            raise RuntimeError("Server failed to start")
-    except Exception as e:
-        raise e
-    finally:
-        server.should_exit = True
-        await server_task
+@pytest.fixture(scope="function")
+def server_factory() -> Callable[[], AsyncGenerator[Server, None]]:
+    async def _create_server() -> AsyncGenerator[Server, None]:
+        server = await create_server()
+        server_task = asyncio.create_task(server.serve())
+
+        # wait for server to start
+        url = f"{settings.GATEWAY_ORIGIN}/health"
+        end_time = time.time() + CONTAINER_STARTUP_SECONDS + 5
+
+        try:
+            while time.time() < end_time:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(url, timeout=1.0)
+                        if response.is_success:
+                            yield server
+                            break
+                except httpx.RequestError:
+                    pass
+                time.sleep(1)
+            else:
+                raise RuntimeError("Server failed to start")
+        except Exception as e:
+            raise e
+        finally:
+            server.should_exit = True
+            await server_task
+
+    return _create_server
 
 
 @pytest.fixture(scope="function")
@@ -96,21 +110,21 @@ def reset_container_lock():
 def track_created_containers(
     monkeypatch: pytest.MonkeyPatch, created_container_hostnames: set[str]
 ):
-    original_create_or_replace = ContainerManager._create_or_replace_container_impl  # type: ignore[reportPrivateUsage]
+    original_create_or_replace = ContainerService._create_or_replace_container_impl  # type: ignore[reportPrivateUsage]
 
     async def tracked_create_or_replace(
         cls: type[ContainerManager], client: ContainerEngineClient, *, mount_dir: Path | None = None
-    ) -> str:
+    ) -> Container:
         """Wrapper that tracks created containers."""
-        hostname = await original_create_or_replace(client, mount_dir=mount_dir)
+        container = await original_create_or_replace(client, mount_dir=mount_dir)
 
         # Track the created container hostname
-        created_container_hostnames.add(hostname)
+        created_container_hostnames.add(container.hostname)
 
-        return hostname
+        return container
 
     monkeypatch.setattr(
-        ContainerManager,
+        ContainerService,
         "_create_or_replace_container_impl",
         classmethod(tracked_create_or_replace),
     )
@@ -121,7 +135,7 @@ async def _init_container_engine():
     Initialize docker environment.
     Pull SERVER_IMAGE image and start services & networks in docker-compose.yml.
     """
-    await ContainerManager.pull_container_image()
+    await ContainerService.pull_container_image()
 
     cmd = f"DOCKER_HOST={get_container_engine_socket(settings.CONTAINER_ENGINE)} docker compose"
     if ENV_FILE:
@@ -144,7 +158,9 @@ async def _cleanup_container_engine(
         if scope == "function":
             labels["com.docker.compose.service"] = "mcp-getgather"
             for hostname in created_container_hostnames or {}:
-                await ContainerManager._purge_container(hostname, client=client)  # type: ignore[reportPrivateUsage]
+                container = await ContainerService.get_container(hostname, client=client)
+                if container:
+                    await ContainerService.purge_container(container, client=client)
         else:
             containers = await client.list_containers(labels=labels)
             await client.delete_containers(*[container.id for container in containers])

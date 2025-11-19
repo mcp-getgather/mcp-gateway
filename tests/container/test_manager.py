@@ -1,200 +1,211 @@
 import asyncio
-import platform
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Callable, Literal, cast, overload
 from unittest.mock import patch
 
 import pytest
-from assertpy import assert_that
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+from uvicorn import Server
 
 from src.auth.auth import AuthUser
+from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX
+from src.container.container import Container
 from src.container.engine import engine_client
 from src.container.manager import (
-    CONTAINER_NETWORK_NAME,
-    Container,
-    ContainerManager,
-    ContainerMetadata,
+    CallbackTTLCache,
+    _cleanup_container,  # type: ignore[reportPrivateUsage]
 )
+from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNASSIGNED_USER_ID
 from src.settings import settings
 
 
 @pytest.mark.asyncio
-async def test_create_new_container():
-    hostname = await ContainerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
-
-    await _assert_container_info(
-        hostname=hostname,
-        labels={
-            "com.docker.compose.project": settings.CONTAINER_PROJECT_NAME,
-            "com.docker.compose.service": "mcp-getgather",
-        },
-        state={
-            "Status": "running",
-            "Running": True,
-        },
-        env=[
-            f"LOG_LEVEL={settings.LOG_LEVEL}",
-            f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
-            f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
-            f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
-            f"SENTRY_DSN={settings.CONTAINER_SENTRY_DSN}",
-            f"DATA_DIR=/app/data",
-            f"HOSTNAME={hostname}",
-            "PORT=80",
-        ],
-        mount={
-            "Type": "bind",
-            "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
-            "Destination": "/app/data",
-            "RW": True,
-            "Propagation": "rprivate",
-        },
-    )
-    await _assert_mount_dir(hostname)
-
-
-@pytest.mark.asyncio
-async def test_reload_unassigned_container():
-    hostname = await ContainerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
-    mount_dir = Container.mount_dir_for_hostname(hostname)
-    container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-    assert container is not None
-
-    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
-        await client.delete_container(container.id)
-    assert not await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-
-    reloaded_hostname = await ContainerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
-    reloaded_container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-
-    assert reloaded_hostname == hostname
-
-    assert container is not None
-    assert reloaded_container is not None
-
-    _assert_same_container(container, reloaded_container)
-    await _assert_mount_dir(hostname)
-
-
-@pytest.mark.asyncio
-async def test_assign_container():
-    hostname = await ContainerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
-    user = AuthUser(sub="test_user", auth_provider="github")
-    await _assign_container(user)
-
-    await _assert_container_info(
-        hostname=hostname,
-        user=user,
-        mount={
-            "Type": "bind",
-            "Source": str(Container.mount_dir_for_hostname(hostname).resolve()),
-            "Destination": "/app/data",
-            "RW": True,
-            "Propagation": "rprivate",
-        },
-    )
-    await _assert_mount_dir(hostname, user)
-
-
-@pytest.mark.asyncio
-async def test_reload_assigned_container():
-    hostname = await ContainerManager._create_or_replace_container()  # type: ignore[reportPrivateUsage]
-    user = AuthUser(sub="test_user", auth_provider="github")
-    await _assign_container(user)
-
-    mount_dir = Container.mount_dir_for_hostname(hostname)
-    container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-    assert container is not None
-
-    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
-        await client.delete_container(container.id)
-    assert not await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-
-    reloaded_hostname = await ContainerManager._create_or_replace_container(mount_dir=mount_dir)  # type: ignore[reportPrivateUsage]
-    reloaded_container = await ContainerManager._get_container(hostname)  # type: ignore[reportPrivateUsage]
-
-    assert reloaded_hostname == hostname
-
-    assert container is not None
-    assert reloaded_container is not None
-
-    _assert_same_container(container, reloaded_container)
-    await _assert_mount_dir(hostname, user)
-
-
-async def _assign_container(user: AuthUser) -> None:
-    # non-macOS systems need to wait for container to install iproute2 before assignment
-    start_time_seconds = 5 if platform.system() != "Darwin" else 0
-    await asyncio.sleep(start_time_seconds)
-
-    with patch("src.container.manager.CONTAINER_STARTUP_SECONDS", start_time_seconds):
-        await ContainerManager._assign_container(user)  # type: ignore[reportPrivateUsage]
-
-
-async def _assert_container_info(
-    *,
-    hostname: str,
-    user: AuthUser | None = None,
-    labels: dict[str, str] | None = None,
-    state: dict[str, str | bool] | None = None,
-    env: list[str] | None = None,
-    mount: dict[str, str | bool] | None = None,
+async def test_auth_user_container_lifecycle(
+    server_factory: Callable[[], AsyncGenerator[Server, None]],
 ):
-    async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
-        container_name = ContainerManager._container_name_for_user(hostname, user=user)  # type: ignore[reportPrivateUsage]
-        container = await client.get_container(name=container_name)
-        info = container.info
+    mock_pool = CallbackTTLCache[str, Container](
+        maxsize=10,
+        ttl=10,
+        on_expire=_cleanup_container,
+        on_pop=_cleanup_container,
+    )
 
-    assert container.info["Config"]["Hostname"] == hostname
+    with patch("src.container.manager._active_assigned_pool", mock_pool):
+        # Step 1. start the server (done by the fixture)
+        async for _ in server_factory():
+            await _assert_container_pools(mock_pool)
 
-    if labels:
-        assert info["Config"]["Labels"] == labels
-    if state:
-        assert_that(state).is_subset_of(info["State"])
-    if env:
-        assert_that(info["Config"]["Env"]).contains(*env)
-    if mount:
-        assert_that(mount).is_subset_of(info["Mounts"][0])
+            # Step 2. make a request from a github user
+            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            container_1 = await _assert_container_pools(
+                mock_pool,
+                user=user,
+                assigned_container_status="active",
+            )
 
-    network_name = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
-    assert network_name in info["NetworkSettings"]["Networks"]
+            # Step 3. wait for the container to be checkpointed
+            await asyncio.sleep(mock_pool.ttl)
+            container_2 = await _assert_container_pools(
+                mock_pool,
+                user=user,
+                assigned_hostname=container_1.hostname,
+                assigned_container_status="checkpointed",
+            )
+
+            # the container should be the same
+            assert container_1.id == container_2.id
+            assert container_1.name == container_2.name
+            assert container_1.hostname == container_2.hostname
+
+            # Step 4. make another request from the same user
+            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            container_3 = await _assert_container_pools(
+                mock_pool,
+                user=user,
+                assigned_hostname=container_1.hostname,
+                assigned_container_status="active",
+            )
+
+            # the container should be the same
+            assert container_1.id == container_3.id
+            assert container_1.name == container_3.name
+            assert container_1.hostname == container_3.hostname
 
 
-async def _assert_mount_dir(hostname: str, user: AuthUser | None = None) -> None:
-    mount_dir = Container.mount_dir_for_hostname(hostname)
-    assert mount_dir.exists()
-    if user:
-        metadata = await ContainerManager._read_metadata(hostname)  # type: ignore[reportPrivateUsage]
-        assert metadata == ContainerMetadata(user=user)
-    else:
-        assert not Container.metadata_file_for_hostname(hostname).exists()
+@pytest.mark.asyncio
+async def test_getgather_app_container_lifecycle(
+    server_factory: Callable[[], AsyncGenerator[Server, None]],
+):
+    mock_pool = CallbackTTLCache[str, Container](
+        maxsize=10,
+        ttl=10,
+        on_expire=_cleanup_container,
+        on_pop=_cleanup_container,
+    )
+
+    with patch("src.container.manager._active_assigned_pool", mock_pool):
+        # Step 1. start the server (done by the fixture)
+        async for _ in server_factory():
+            await _assert_container_pools(mock_pool)
+
+            # Step 2. make a request from a github user
+            user_id = "test_user_id"
+            app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
+            token = f"{GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}"
+            user = await _make_mcp_request(token)
+
+            assert user.app_name == app_name
+            container_1 = await _assert_container_pools(
+                mock_pool, user=user, assigned_container_status="active"
+            )
+
+            # Step 3. wait for the container to be deleted
+            await asyncio.sleep(mock_pool.ttl * 2)
+            await _assert_container_pools(
+                mock_pool,
+                user=user,
+                assigned_hostname=container_1.hostname,
+                assigned_container_status="deleted",
+            )
+
+            # Step 4. make another request from the same user
+            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            container_2 = await _assert_container_pools(
+                mock_pool, user=user, assigned_container_status="active"
+            )
+
+            # the container should be different
+            assert container_1.id != container_2.id
+            assert container_1.hostname != container_2.hostname
 
 
-def _assert_same_container(container_1: Container, container_2: Container) -> None:
-    def _pick_info(container: Container) -> dict[str, Any]:
-        # remove info that could change between reloads
-        info = {
-            k: v
-            for k, v in container.info.items()
-            if k in ["Name", "Image", "Config", "Mounts", "NetworkSettings"]
-        }
+@overload
+async def _assert_container_pools(
+    pool: CallbackTTLCache[str, Container],
+    *,
+    user: AuthUser,
+    assigned_hostname: str | None = None,
+    assigned_container_status: Literal["active", "checkpointed", "deleted"] = "active",
+) -> Container: ...
 
-        info["Config"].pop("Hostname", None)
-        info["Config"].pop("CreateCommand", None)
-        info["Config"]["Env"] = sorted(info["Config"]["Env"])
 
-        for key in ["SandboxID", "SandboxKey"]:
-            info["NetworkSettings"].pop(key, None)
+@overload
+async def _assert_container_pools(
+    pool: CallbackTTLCache[str, Container],
+    *,
+    user: None = None,
+    assigned_hostname: None = None,
+    assigned_container_status: Literal["active", "checkpointed", "deleted"] = "active",
+) -> None: ...
 
-        network_name = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
-        for key in ["EndpointID", "MacAddress", "IPAddress"]:
-            info["NetworkSettings"]["Networks"][network_name].pop(key, None)
 
-        if "DNSNames" in info["NetworkSettings"]["Networks"][network_name]:
-            info["NetworkSettings"]["Networks"][network_name]["DNSNames"].remove(container.id)
-        if "Aliases" in info["NetworkSettings"]["Networks"][network_name]:
-            if info["NetworkSettings"]["Networks"][network_name]["Aliases"]:
-                info["NetworkSettings"]["Networks"][network_name]["Aliases"].remove(container.id)
+async def _assert_container_pools(
+    pool: CallbackTTLCache[str, Container],
+    *,
+    user: AuthUser | None = None,
+    assigned_hostname: str | None = None,
+    assigned_container_status: Literal["active", "checkpointed", "deleted"] = "active",
+) -> Container | None:
+    async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
+        containers = await client.list_containers(labels=CONTAINER_LABELS)
 
-        return info
+    unassigned_containers = [c for c in containers if c.name.startswith(UNASSIGNED_USER_ID)]
+    assert len(unassigned_containers) == settings.NUM_STANDBY_CONTAINERS
+    for container in unassigned_containers:
+        assert container.status == "running"
 
-    assert _pick_info(container_1) == _pick_info(container_2)
+    assigned_containers = [c for c in containers if not c.name.startswith(UNASSIGNED_USER_ID)]
+    # Get the data of a CallbackTTLCache without triggering expiration or pop callbacks
+    pool_data = cast(dict[str, Container], pool._Cache__data)  # type: ignore
+
+    if not user:
+        assert len(assigned_containers) == 0
+        assert len(pool_data) == 0
+
+        return None
+    elif assigned_container_status == "deleted":
+        assert len(assigned_containers) == 0
+        assert len(pool_data) == 0
+
+        assert user.auth_provider == "getgather"
+
+        assert assigned_hostname is not None
+        mount_dir = settings.container_mount_parent_dir / assigned_hostname
+        assert not mount_dir.exists()
+        cleanup_mount_dir = settings.cleanup_container_mount_parent_dir / assigned_hostname
+        assert cleanup_mount_dir.exists()
+
+        return None
+    else:  # user is not None and expected_user_container_status is not "deleted"
+        assert len(assigned_containers) == 1
+        container = assigned_containers[0]
+        if assigned_hostname:
+            assert container.hostname == assigned_hostname
+
+        if assigned_container_status == "active":
+            assert len(pool_data) == 1
+
+            assert container.status == "running"
+            assert not container.checkpointed
+            assert container.hostname in pool_data
+        elif assigned_container_status == "checkpointed":
+            assert len(pool_data) == 0
+
+            assert user.auth_provider != "getgather"
+            assert container.status == "exited"
+            assert container.checkpointed
+
+        return container
+
+
+async def _make_mcp_request(auth_token: str):
+    url = f"{settings.GATEWAY_ORIGIN}/mcp-media"
+    headers = {"Authorization": f"Bearer {auth_token}"}
+
+    async with streamablehttp_client(url, headers=headers) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("get_user_info")
+
+    return AuthUser.model_validate(result.structuredContent)
