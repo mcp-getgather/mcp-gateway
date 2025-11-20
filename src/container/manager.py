@@ -55,13 +55,16 @@ class CallbackTTLCache(TTLCache[K, V]):
 
 
 CONTAINER_ACTIVE_TTL_SECONDS = 60 * 20  # 20 minutes
-CONTAINER_MAX_MEMORY_BYTES = 300 * 1024 * 1024  # 300MB
+CONTAINER_MEMORY_BYTES = 300 * 1024 * 1024  # 300MB
 
 
 def _get_assigned_container_pool_size():
-    """Calculate the maximum number of assigned containers that can be created using 90% of the available memory."""
+    """
+    Calculate the maximum number of assigned containers that can
+    run simultaneously using 90% of the available memory.
+    """
     memory = psutil.virtual_memory()
-    max_num_containers = int(memory.available / CONTAINER_MAX_MEMORY_BYTES * 0.9)
+    max_num_containers = int(memory.available / CONTAINER_MEMORY_BYTES * 0.9)
     return max_num_containers - settings.NUM_STANDBY_CONTAINERS
 
 
