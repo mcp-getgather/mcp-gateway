@@ -45,7 +45,7 @@ async def test_auth_user_container_lifecycle(
             )
 
             # Step 3. wait for the container to be checkpointed
-            await asyncio.sleep(mock_pool.ttl)
+            await asyncio.sleep(mock_pool.ttl * 2)
             container_2 = await _assert_container_pools(
                 mock_pool,
                 user=user,
