@@ -27,7 +27,7 @@ class Container(BaseModel):
 
     @classmethod
     def from_inspect(cls, info: dict[str, Any], *, network_name: str) -> "Container":
-        networks = info["NetworkSettings"]["Networks"]
+        networks = info["NetworkSettings"].get("Networks", {})
         return cls(
             id=info["Id"][:12],
             name=info["Name"].lstrip("/"),
