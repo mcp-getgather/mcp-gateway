@@ -49,7 +49,10 @@ class Settings(BaseSettings):
 
     CONTAINER_SENTRY_DSN: str = ""
 
-    MIN_CONTAINER_POOL_SIZE: int = 5
+    NUM_STANDBY_CONTAINERS: int = 5
+
+    # for testing only
+    TEST_GITHUB_OAUTH_TOKEN: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):
@@ -71,6 +74,14 @@ class Settings(BaseSettings):
     @property
     def container_mount_parent_dir(self) -> Path:
         path = Path(self.HOST_DATA_DIR).expanduser() / "container_mounts"
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def cleanup_container_mount_parent_dir(self) -> Path:
+        """Directory to store mount directories that are cleaned up."""
+        path = self.container_mount_parent_dir / "__cleanup"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path

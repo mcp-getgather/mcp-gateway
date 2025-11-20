@@ -25,6 +25,20 @@ async def test_mcp_getgather_auth(server: Server):
 
 
 @pytest.mark.asyncio
+async def test_mcp_github_auth(server: Server):
+    url = f"{settings.GATEWAY_ORIGIN}/mcp-media"
+    headers = {"Authorization": f"Bearer {settings.TEST_GITHUB_OAUTH_TOKEN}"}
+    async with streamablehttp_client(url, headers=headers) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("get_user_info")
+
+    assert not result.isError
+    user = AuthUser.model_validate(result.structuredContent)
+    assert user.auth_provider == "github"
+
+
+@pytest.mark.asyncio
 async def test_npr(server: Server):
     user_id = "test_user_id"
     app_key = list(settings.GETGATHER_APPS.keys())[0]

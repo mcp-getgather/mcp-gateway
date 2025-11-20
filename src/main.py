@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.auth.auth import setup_mcp_auth
 from src.container.manager import ContainerManager
+from src.container.service import ContainerService
 from src.logs import logger, setup_logging
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
 from src.proxies.mcp import get_mcp_apps
@@ -19,10 +20,22 @@ from src.settings import FRONTEND_DIR, settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    stop_event = asyncio.Event()
+
+    async def _maintenance_loop():
+        while not stop_event.is_set():
+            interval = await ContainerManager.perform_maintenance()
+            await asyncio.sleep(interval)
+
+    background_task = asyncio.create_task(_maintenance_loop())
+
     async with AsyncExitStack() as stack:
         for mcp_app in app.state.mcp_apps.values():
             await stack.enter_async_context(mcp_app.lifespan(app))
         yield
+
+        stop_event.set()
+        await background_task
 
 
 logfire.configure(
@@ -54,8 +67,8 @@ def create_app():
         if not token or token != settings.ADMIN_API_TOKEN:
             raise HTTPException(status_code=401, detail="Missing or invalid admin token")
 
-        await ContainerManager.pull_container_image()
-        await ContainerManager.reload_containers(state="all")
+        await ContainerService.pull_container_image()
+        await ContainerManager.update_containers()
 
     @app.get("/account/{mcp_name}")
     async def account(mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
@@ -87,7 +100,7 @@ async def create_server():
         segment_write_key=settings.SEGMENT_WRITE_KEY,
     )
 
-    await ContainerManager.reload_containers()
+    await ContainerManager.refresh_standby_pool()
 
     app = create_app()
     app.state.mcp_apps = await get_mcp_apps()

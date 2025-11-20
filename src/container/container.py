@@ -9,22 +9,33 @@ from src.settings import settings
 
 class Container(BaseModel):
     id: str
+    name: str
     hostname: str
-    ip: str
-    status: Literal["running"]
+    ip: str | None
+    status: Literal["running", "exited"]
     started_at: datetime  # datetime in UTC
+    checkpointed: bool
 
     info: dict[str, Any] = Field(exclude=True)
     network_name: str = Field(exclude=True)
 
+    @property
+    def validated_ip(self) -> str:
+        if self.ip is None:
+            raise RuntimeError(f"Container {self.name} has no IP address")
+        return self.ip
+
     @classmethod
     def from_inspect(cls, info: dict[str, Any], *, network_name: str) -> "Container":
+        networks = info["NetworkSettings"].get("Networks", {})
         return cls(
             id=info["Id"][:12],
+            name=info["Name"].lstrip("/"),
             hostname=info["Config"]["Hostname"],
-            ip=info["NetworkSettings"]["Networks"][network_name]["IPAddress"],
+            ip=networks[network_name]["IPAddress"] if network_name in networks else None,
             status=info["State"]["Status"],
             started_at=datetime.fromisoformat(info["State"]["StartedAt"]).astimezone(timezone.utc),
+            checkpointed=info["State"].get("Checkpointed", False),
             info=info,
             network_name=network_name,
         )

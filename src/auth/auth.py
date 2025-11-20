@@ -112,6 +112,13 @@ class AuthUser(BaseModel):
         """Unique user name combining login and auth provider"""
         return f"{self.sub}.{self.auth_provider}"
 
+    @classmethod
+    def from_user_id(cls, user_id: str) -> "AuthUser":
+        parts = user_id.split(".")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid user id: {user_id}")
+        return cls(sub=".".join(parts[:-1]), auth_provider=cast(OAUTH_PROVIDER_TYPE, parts[-1]))
+
 
 def get_auth_user() -> AuthUser:
     token = get_access_token()

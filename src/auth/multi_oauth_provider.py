@@ -49,7 +49,7 @@ class MultiOAuthTokenVerifier(TokenVerifier):
     async def verify_token(self, token: str) -> AccessToken | None:
         if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
             return await getgather_auth_provider.verify_token(token)
-        elif token.startswith("gho_"):
+        elif token.startswith("gho_") or token.startswith("ghp_"):
             result = await github_auth_provider.verify_token(token)
             if result:
                 result.claims["auth_provider"] = "github"

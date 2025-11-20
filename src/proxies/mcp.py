@@ -11,7 +11,8 @@ from fastmcp.server.proxy import FastMCPProxy, ProxyClient
 from pydantic import BaseModel
 
 from src.auth.auth import get_auth_user
-from src.container.manager import CONTAINER_STARTUP_SECONDS, ContainerManager
+from src.container.manager import ContainerManager
+from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.logs import logger
 from src.settings import settings
 
@@ -30,7 +31,7 @@ class SegmentMiddleware(Middleware):
             data["message"] = str(context.message)
         analytics.track(container.hostname, "mcp_request", data)  # type: ignore[reportUnknownMemberType]
         logger.info(
-            f"Proxy MCP request for {user.user_id} ({user.name}) to {container.hostname} ({container.ip})"
+            f"Proxy MCP request for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
         )
 
         return await call_next(context)
@@ -49,7 +50,7 @@ def _create_client_factory(path: str):
         headers.update(logfire.get_context())
 
         logger.info(
-            f"Proxy {path} connection for {user.user_id} ({user.name}) to {container.hostname} ({container.ip})"
+            f"Proxy {path} connection for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
         )
         data = user.model_dump(exclude_none=True)
         data["path"] = path
@@ -57,7 +58,7 @@ def _create_client_factory(path: str):
 
         return ProxyClient[StreamableHttpTransport](
             StreamableHttpTransport(
-                f"http://{container.ip}{path}",
+                f"http://{container.validated_ip}{path}",
                 headers=headers,
                 sse_read_timeout=settings.PROXY_READ_TIMEOUT,
             )
@@ -99,7 +100,7 @@ async def _fetch_mcp_routes():
 
         container = await ContainerManager.get_unassigned_container()
 
-    url = f"http://{container.ip}/api/docs-mcp"
+    url = f"http://{container.validated_ip}/api/docs-mcp"
 
     async with httpx.AsyncClient() as client:
         response = await client.request(method="GET", url=url)
