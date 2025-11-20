@@ -9,6 +9,7 @@ import aiorwlock
 import httpx
 import pytest
 import pytest_asyncio
+from loguru import logger
 from uvicorn import Server
 
 from src.container import engine
@@ -26,7 +27,6 @@ from src.container.service import (
     CONTAINER_STARTUP_SECONDS,
     ContainerService,
 )
-from src.logs import logger
 from src.main import create_server
 from src.settings import ENV_FILE, settings
 

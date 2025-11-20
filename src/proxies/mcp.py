@@ -8,12 +8,12 @@ import segment.analytics as analytics
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
+from loguru import logger
 from pydantic import BaseModel
 
 from src.auth.auth import get_auth_user
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
-from src.logs import logger
 from src.settings import settings
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
@@ -30,9 +30,7 @@ class SegmentMiddleware(Middleware):
         else:
             data["message"] = str(context.message)
         analytics.track(container.hostname, "mcp_request", data)  # type: ignore[reportUnknownMemberType]
-        logger.info(
-            f"Proxy MCP request for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
-        )
+        logger.info(f"Proxy MCP request for user", container=container.dump(), user=user.dump())
 
         return await call_next(context)
 
@@ -50,9 +48,12 @@ def _create_client_factory(path: str):
         headers.update(logfire.get_context())
 
         logger.info(
-            f"Proxy {path} connection for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
+            f"Proxy MCP connection for user",
+            container=container.dump(),
+            user=user.dump(),
+            path=path,
         )
-        data = user.model_dump(exclude_none=True)
+        data = user.dump()
         data["path"] = path
         analytics.identify(container.hostname, data)  # type: ignore[reportUnknownMemberType]
 
@@ -78,7 +79,7 @@ def _get_mcp_proxy(route: MCPRoute):
     def get_user_info():  # type: ignore[reportUnusedFunction]
         """Get information about the authenticated user."""
         user = get_auth_user()
-        return user.model_dump(exclude_none=True)
+        return user.dump()
 
     return proxy.http_app(path="/")
 

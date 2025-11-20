@@ -4,6 +4,7 @@ from typing import Callable, TypeVar
 
 import psutil
 from cachetools import TTLCache
+from loguru import logger
 
 from src.auth.auth import AuthUser
 from src.container.container import Container
@@ -14,8 +15,9 @@ from src.container.service import (
     ContainerIdentity,
     ContainerService,
 )
-from src.logs import logger
 from src.settings import settings
+
+logger = logger.bind(topic="manager")
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -111,14 +113,18 @@ class ContainerManager:
             if container.status == "running":
                 if container.hostname not in _active_assigned_pool:
                     logger.warning(
-                        f"Running container {container.hostname} is not in the active pool, adding it"
+                        f"Running container is not in the active pool, adding it",
+                        hostname=container.hostname,
+                        user=user.dump(),
                     )
             elif container.checkpointed:
                 container = await ContainerService.restore_container(container)
             else:
                 logger.warning(
-                    f"Container {container.hostname} for user {user.user_id} is in an error state"
-                    " (not running or checkpointed). A new container will be assigned."
+                    f"Container is in an error state (not running or checkpointed)."
+                    " A new container will be assigned.",
+                    hostname=container.hostname,
+                    user=user.dump(),
                 )
                 await ContainerService.purge_container(container)
                 container = None

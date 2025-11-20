@@ -119,6 +119,9 @@ class AuthUser(BaseModel):
             raise ValueError(f"Invalid user id: {user_id}")
         return cls(sub=".".join(parts[:-1]), auth_provider=cast(OAUTH_PROVIDER_TYPE, parts[-1]))
 
+    def dump(self):
+        return self.model_dump(exclude_none=True, mode="json")
+
 
 def get_auth_user() -> AuthUser:
     token = get_access_token()

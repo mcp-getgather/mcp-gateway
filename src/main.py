@@ -7,15 +7,23 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
 
 from src.auth.auth import setup_mcp_auth
 from src.container.manager import ContainerManager
 from src.container.service import ContainerService
-from src.logs import logger, setup_logging
+from src.logs import setup_logging
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
 from src.proxies.mcp import get_mcp_apps
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
+
+setup_logging(
+    level=settings.LOG_LEVEL,
+    logs_dir=settings.logs_dir,
+    sentry_dsn=settings.GATEWAY_SENTRY_DSN,
+    segment_write_key=settings.SEGMENT_WRITE_KEY,
+)
 
 
 @asynccontextmanager
@@ -94,12 +102,6 @@ async def create_server():
     Start mcp-getgather containers, fetch MCP routes,
     then set up the FastAPI server and start it.
     """
-    setup_logging(
-        level=settings.LOG_LEVEL,
-        sentry_dsn=settings.GATEWAY_SENTRY_DSN,
-        segment_write_key=settings.SEGMENT_WRITE_KEY,
-    )
-
     await ContainerManager.refresh_standby_pool()
 
     app = create_app()

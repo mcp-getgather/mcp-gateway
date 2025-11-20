@@ -1,40 +1,30 @@
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import segment.analytics as analytics
 import sentry_sdk
+import yaml
+from loguru import logger
 from rich.logging import RichHandler
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
+if TYPE_CHECKING:
+    from loguru import HandlerConfig, Record
+
 LOGGER_NAME = Path(__file__).parent.name  # Assume the parent directory name is the project name
 
 
 def setup_logging(
-    *, level: str = "INFO", sentry_dsn: str | None = None, segment_write_key: str | None = None
+    *,
+    level: str = "INFO",
+    logs_dir: Path | None = None,
+    sentry_dsn: str | None = None,
+    segment_write_key: str | None = None,
 ):
-    rich_handler = RichHandler(
-        rich_tracebacks=True,
-        markup=True,
-        show_time=True,
-        show_level=True,
-        show_path=False,
-    )
-    rich_handler.setFormatter(StructuredFormatter())
-
-    # reconfigure uvicorn.error, uvicorn.access and fastapi
-    for name in ["uvicorn.error", "uvicorn.access", "fastapi"]:
-        _logger = logging.getLogger(name)
-        _logger.handlers.clear()
-        _logger.addHandler(rich_handler)
-        _logger.propagate = False
-
-    # Configure the root logger to INFO level, and app logger to the level
-    # specified in the .env
-    logging.basicConfig(level="INFO", format="%(message)s", datefmt="[%X]", handlers=[rich_handler])
-    logging.getLogger(LOGGER_NAME).setLevel(level)
+    _setup_logger(level, logs_dir)
 
     # setup sentry
     if sentry_dsn:
@@ -52,6 +42,7 @@ def setup_logging(
     else:
         logger.warning("No GATEWAY_SENTRY_DSN provided, Sentry is disabled")
 
+    # setup segment
     if segment_write_key:
         logger.info("Initializing Segment")
         analytics.write_key = segment_write_key
@@ -62,87 +53,55 @@ def setup_logging(
         analytics.send = False
 
 
-logger = logging.getLogger(LOGGER_NAME)
+LOG_FILE_TOPICS = frozenset(["manager", "service"])
 
 
-class StructuredFormatter(logging.Formatter):
-    """Custom formatter that handles extra fields in log records."""
+def _setup_logger(level: str, logs_dir: Path | None = None):
+    logger.remove()
 
-    def format(self, record: logging.LogRecord) -> str:
-        # Get the base formatted message
-        base_msg = super().format(record)
+    rich_handler = RichHandler(rich_tracebacks=True, log_time_format="%X", markup=True)
 
-        # Extract extra fields (anything not in the standard LogRecord attributes)
-        # Include all possible LogRecord attributes to avoid conflicts
-        standard_attrs = {
-            "name",
-            "msg",
-            "args",
-            "levelname",
-            "levelno",
-            "pathname",
-            "filename",
-            "module",
-            "lineno",
-            "funcName",
-            "created",
-            "msecs",
-            "relativeCreated",
-            "thread",
-            "threadName",
-            "processName",
-            "process",
-            "getMessage",
-            "exc_info",
-            "exc_text",
-            "stack_info",
-            "message",
-            "asctime",
-            "taskName",
+    def _format_with_extra(record: "Record") -> str:
+        message = record["message"]
+
+        if record["extra"]:
+            extra = yaml.dump(record["extra"], sort_keys=False, default_flow_style=False)
+            message = f"{message}\n{extra.rstrip()}"
+
+        return message
+
+    handlers: list[HandlerConfig] = [
+        {
+            "sink": rich_handler,
+            "format": _format_with_extra,
+            "level": level,
+            "backtrace": True,
+            "diagnose": True,
         }
+    ]
+    if logs_dir:
+        logfile = (logs_dir / f"containers.log").as_posix()
 
-        extras = {
-            k: v
-            for k, v in record.__dict__.items()
-            if k not in standard_attrs and not k.startswith("_")
-        }
+        def _filter_for_file(record: "Record") -> bool:
+            return record["extra"].get("topic") in LOG_FILE_TOPICS
 
-        if extras:
-            # Color code the extras section based on log level
-            level_colors = {
-                "DEBUG": "dim blue",
-                "INFO": "cyan",
-                "WARNING": "yellow",
-                "ERROR": "red",
-                "CRITICAL": "bold red",
-            }
-            color = level_colors.get(record.levelname, "white")
+        handlers.append({
+            "sink": logfile,
+            "format": "{message}",
+            "level": "INFO",
+            "rotation": "100 MB",
+            "retention": "30 days",
+            "serialize": True,
+            "enqueue": True,
+            "backtrace": True,
+            "diagnose": False,
+            "filter": _filter_for_file,
+        })
 
-            # Always use multi-line format for better readability
-            extras_lines: list[str] = []
-            for key, value in extras.items():
-                value_any: Any = value  # Type annotation for unknown LogRecord fields
+    logger.configure(handlers=handlers)
 
-                # Handle complex values like dicts
-                if isinstance(value_any, dict):
-                    if len(value_any) <= 3:  # Small dicts inline  # type: ignore[arg-type]
-                        value_str = str(value_any)  # type: ignore[arg-type]
-                    else:  # Large dicts formatted
-                        dict_items = [f"{k}={v}" for k, v in value_any.items()]  # type: ignore[misc]
-                        value_str = "{\n      " + ",\n      ".join(dict_items) + "\n    }"
-                elif isinstance(value_any, (list, tuple)) and len(value_any) > 3:  # type: ignore[arg-type]
-                    # Format long lists/tuples nicely
-                    items = [str(item) for item in value_any]  # type: ignore[misc]
-                    value_str = "[\n      " + ",\n      ".join(items) + "\n    }"
-                else:
-                    value_str = str(value_any)  # type: ignore[arg-type]
-
-                extras_lines.append(f"[{color}]    {key}:[/{color}] {value_str}")
-
-            extras_str = "\n" + "\n".join(extras_lines) + "\n"
-            return f"{base_msg}\n{extras_str}"
-
-        return base_msg
-
-
-# The StructuredFormatter handles extra fields automatically when using logger.info(msg, extra={...})
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers.clear()  # Remove existing handlers
+        uvicorn_logger.addHandler(rich_handler)
+        uvicorn_logger.propagate = False

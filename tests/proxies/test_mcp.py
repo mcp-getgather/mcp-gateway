@@ -19,9 +19,10 @@ async def test_mcp_getgather_auth(server: Server):
             await session.initialize()
             result = await session.call_tool("get_user_info")
 
-    assert result.structuredContent == AuthUser(
-        sub=user_id, auth_provider="getgather", app_name=app_name
-    ).model_dump(exclude_none=True)
+    assert (
+        result.structuredContent
+        == AuthUser(sub=user_id, auth_provider="getgather", app_name=app_name).dump()
+    )
 
 
 @pytest.mark.asyncio
