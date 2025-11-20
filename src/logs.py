@@ -100,8 +100,9 @@ def _setup_logger(level: str, logs_dir: Path | None = None):
 
     logger.configure(handlers=handlers)
 
-    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
-        uvicorn_logger = logging.getLogger(logger_name)
-        uvicorn_logger.handlers.clear()  # Remove existing handlers
-        uvicorn_logger.addHandler(rich_handler)
-        uvicorn_logger.propagate = False
+    # Override the loggers of external libraries to ensure consistent formatting
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastmcp"):
+        lib_logger = logging.getLogger(logger_name)
+        lib_logger.handlers.clear()  # Remove existing handlers
+        lib_logger.addHandler(rich_handler)
+        lib_logger.propagate = False
