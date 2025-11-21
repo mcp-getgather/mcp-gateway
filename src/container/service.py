@@ -23,7 +23,7 @@ FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
 # the full network name is prefixed by settings.CONTAINER_PROJECT_NAME
 CONTAINER_NETWORK_NAME = f"{settings.CONTAINER_PROJECT_NAME}_internal-net"
 
-CONTAINER_IMAGE_NAME = f"{settings.CONTAINER_PROJECT_NAME}_mcp-getgather"
+CONTAINER_IMAGE_NAME = settings.CONTAINER_IMAGE or "mcp-getgather"
 CONTAINER_STARTUP_SECONDS = 20
 
 CONTAINER_LABELS = {

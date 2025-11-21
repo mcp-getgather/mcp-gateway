@@ -2,8 +2,8 @@ from os import environ
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, model_validator
+from pydantic_settings import AliasChoices, BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
@@ -42,10 +42,23 @@ class Settings(BaseSettings):
 
     CONTAINER_PROJECT_NAME: str = ""
     CONTAINER_SUBNET_PREFIX: str = ""
+    CONTAINER_IMAGE: str = ""
 
     BROWSER_TIMEOUT: int = 30_000
     DEFAULT_PROXY_TYPE: str = ""
     PROXIES_CONFIG: str = ""
+    
+    # OxyLabs proxy configuration
+    oxylabs_endpoint: str = Field(
+        default="pr.oxylabs.io:7777",
+        validation_alias=AliasChoices("OXYLABS_ENDPOINT", "oxylabs_endpoint"),
+    )
+    oxylabs_username: str = Field(
+        default="", validation_alias=AliasChoices("OXYLABS_USERNAME", "oxylabs_username")
+    )
+    oxylabs_password: str = Field(
+        default="", validation_alias=AliasChoices("OXYLABS_PASSWORD", "oxylabs_password")
+    )
 
     CONTAINER_SENTRY_DSN: str = ""
 
@@ -64,12 +77,15 @@ class Settings(BaseSettings):
 
     @property
     def auth_enabled(self) -> bool:
-        return all([
+        # Enable auth if either full OAuth is configured OR getgather apps are defined
+        oauth_enabled = all([
             self.OAUTH_GITHUB_CLIENT_ID,
             self.OAUTH_GITHUB_CLIENT_SECRET,
             self.OAUTH_GOOGLE_CLIENT_ID,
             self.OAUTH_GOOGLE_CLIENT_SECRET,
         ])
+        getgather_enabled = bool(self.GETGATHER_APPS)
+        return oauth_enabled or getgather_enabled
 
     @property
     def container_mount_parent_dir(self) -> Path:

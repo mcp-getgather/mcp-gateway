@@ -1,3 +1,4 @@
+from contextvars import ContextVar
 from time import sleep
 from typing import Any, NamedTuple
 from urllib.parse import urlparse
@@ -5,6 +6,7 @@ from urllib.parse import urlparse
 import httpx
 import logfire
 import segment.analytics as analytics
+from fastmcp import FastMCP
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.server.proxy import FastMCPProxy, ProxyClient
@@ -14,7 +16,11 @@ from src.auth.auth import get_auth_user
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.logs import logger
+from src.proxy_sessions import get_proxy_env_for_hostname, intercept_and_store_proxy_location
 from src.settings import settings
+
+# Context variable to store incoming request headers
+incoming_headers_context: ContextVar[dict[str, str]] = ContextVar("incoming_headers", default={})
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
@@ -33,12 +39,20 @@ class SegmentMiddleware(Middleware):
         logger.info(
             f"Proxy MCP request for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
         )
+        logger.debug(f"@@@@ MCP request method: {context.method}, message: {data['message']}")
 
-        return await call_next(context)
+        # Log request metadata if available
+        if hasattr(context, "request_meta") and context.request_meta:
+            logger.debug(f"@@@@ Request metadata: {context.request_meta}")
+
+        result = await call_next(context)
+        logger.debug(f"@@@@ MCP response: {result}")
+        return result
 
 
 def _create_client_factory(path: str):
     async def _create_client():
+        logger.info(f"@@@@ CREATING CLIENT FOR PATH: {path}")
         user = get_auth_user()
         container = await ContainerManager.get_user_container(user)
         gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
@@ -49,9 +63,34 @@ def _create_client_factory(path: str):
         }
         headers.update(logfire.get_context())
 
+        # Forward x-location header from incoming request if present
+        incoming_headers = incoming_headers_context.get()
+        if "x-location" in incoming_headers:
+            logger.debug(f"@@@@ Intercepted x-location: {incoming_headers['x-location']}")
+
+            # Validate and store proxy location for this hostname session
+            proxy_validated = await intercept_and_store_proxy_location(incoming_headers, container.hostname)
+
+            if proxy_validated:
+                headers["x-location"] = incoming_headers["x-location"]
+                headers["x-proxy-session-id"] = container.hostname  # Only add session ID when proxy is validated
+                logger.debug(f"@@@@ Forwarding x-location: {incoming_headers['x-location']}")
+                logger.debug(f"@@@@ Forwarding proxy session_id (hostname): {container.hostname}")
+
+                # Get proxy environment config and forward to backend
+                proxy_env = get_proxy_env_for_hostname(container.hostname)
+                if proxy_env:
+                    for key, value in proxy_env.items():
+                        headers[f"x-proxy-env-{key.lower()}"] = value
+                    logger.debug(f"@@@@ Forwarding proxy env vars: {list(proxy_env.keys())}")
+            else:
+                logger.warning(f"@@@@ Proxy validation failed, not forwarding proxy headers for {container.hostname}")
+
         logger.info(
             f"Proxy {path} connection for {user.user_id} ({user.name}) to {container.hostname} ({container.validated_ip})"
         )
+        logger.debug(f"@@@@ Proxy headers being sent: {headers}")
+        logger.debug(f"Target URL: http://{container.validated_ip}{path}")
         data = user.model_dump(exclude_none=True)
         data["path"] = path
         analytics.identify(container.hostname, data)  # type: ignore[reportUnknownMemberType]
