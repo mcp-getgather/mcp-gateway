@@ -35,30 +35,14 @@ Docker compose is used to set up subnet and tailscale router. It should be insta
 
 ## Run locally
 
-1. Download the lastet [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) image
-
-```bash
-docker image pull ghcr.io/mcp-getgather/mcp-getgather
-# or
-podman image pull ghcr.io/mcp-getgather/mcp-getgather
-```
-
-You can also build `mcp-getgather` image locally
-
-```bash
-cd /path/to/mcp-getgather
-docker build -t mcp-getgather .
-```
-
-2. Create an `.env` file from `env.template`
+1. Create an `.env` file from `env.template`
 
 ```
 CONTAINER_ENGINE=docker # or podman
 CONTAINER_PROJECT_NAME=getgather
-CONTAINER_SUBNET_PREFIX=172.16.0
+CONTAINER_SUBNET_PREFIX=172.20.0
 TS_AUTHKEY=
 
-CONTAINER_IMAGE=ghcr.io/mcp-getgather/mcp-getgather # or mcp-getgather if built locally
 HOST_DATA_DIR=
 
 GATEWAY_ORIGIN=http://localhost:9000
@@ -68,7 +52,41 @@ OAUTH_GOOGLE_CLIENT_ID=
 OAUTH_GOOGLE_CLIENT_SECRET=
 ```
 
-2. Run `docker compose` to set up `tailscale` for networking
+Make sure `CONTAINER_SUBNET_PREFIX` doesn't conflict with existing ones. You can look up existing subnets by
+
+```bash
+# Install tailscale cli if not already
+brew install tailscale
+
+tailscale status --json | jq -r '
+  .Peer
+  | to_entries[]
+  | .value as $peer
+  | $peer.HostName as $host
+  | ($peer.AllowedIPs? // $peer.PrimaryRoutes? // [])
+  | map(select(test("^(100\\.|fd7a:115c:a1e0:)") | not))[]
+  | "\(.)\t\($host)"
+' | sort -u
+```
+
+2. Download the latest [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) image
+
+```bash
+docker image pull ghcr.io/mcp-getgather/mcp-getgather
+docker tag ghcr.io/mcp-getgather/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
+# or
+podman image pull ghcr.io/mcp-getgather/mcp-getgather
+podman tag ghcr.io/mcp-getgather/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
+```
+
+You can also build `mcp-getgather` image locally
+
+```bash
+cd /path/to/mcp-getgather
+docker build -t ${CONTAINER_PROJECT_NAME}_mcp-getgather .
+```
+
+3. Run `docker compose` to set up `tailscale` for networking
 
 ```bash
 docker compose up -d
@@ -76,16 +94,16 @@ docker compose up -d
 podmam compose up -d
 ```
 
-3. Approve "Subnet routes" for the tailscale router hostname `${CONTAINER_POD_NAME}-router` at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
+4. Approve "Subnet routes" for the tailscale router hostname `${CONTAINER_PROJECT_NAME}-router` at [Tailscale Admin Console](https://login.tailscale.com/admin/machines)
 
-4. Install dependencies
+5. Install dependencies
 
 ```bash
 uv sync
 npm install
 ```
 
-5. Start the `fastapi` server
+6. Start the `fastapi` server
 
 ```bash
 npm run dev
