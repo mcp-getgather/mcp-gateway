@@ -209,7 +209,7 @@ class ContainerEngineClient:
         await self.run("container", "rename", id, new_name)
 
     async def pull_image(self, image: str, *, tag: str | None = None):
-        await self.run("image", "pull", image, timeout=30)
+        await self.run("image", "pull", image, timeout=60)
         if tag:
             await self.run("image", "tag", image, tag)
 
