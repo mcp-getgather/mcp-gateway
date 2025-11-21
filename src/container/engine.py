@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple, Protocol
 
 import aiorwlock
+from loguru import logger
 
 from src.container.container import Container
-from src.logs import logger
 from src.settings import settings
 
 CONTAINER_ENGINE_LOCK = aiorwlock.RWLock()
@@ -326,7 +326,8 @@ async def run_cli(
         cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
-    cmd_msg = f"Command: {cmd} {' '.join(args)}"
+    cmd_str = f"{cmd} {' '.join(args)}"
+    cmd_msg = f"Command: {cmd_str}"
     if env:
         cmd_msg += f"\nEnv: {json.dumps(env)}"
 
@@ -341,7 +342,7 @@ async def run_cli(
     if on_error:
         returncode, error = on_error(returncode, error)
 
-    logger.debug(f"CLI return code: {returncode}\n{cmd_msg}")
+    logger.debug(f"Executed CLI command", return_code=returncode, command=cmd_str, env=env)
 
     if returncode != 0:
         raise Exception(f"CLI failed: {error}\n{cmd_msg}")

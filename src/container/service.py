@@ -7,14 +7,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import aiofiles
+from loguru import logger
 from nanoid import generate
 from pydantic import BaseModel, model_validator
 
 from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
-from src.logs import logger
 from src.settings import settings
+
+logger = logger.bind(topic="service")
 
 UNASSIGNED_USER_ID = "UNASSIGNED"
 FRIENDLY_CHARS: str = "23456789abcdefghijkmnpqrstuvwxyz"
@@ -116,7 +118,7 @@ class ContainerService:
     @classmethod
     async def pull_container_image(cls):
         source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
-        logger.info(f"Pulling container image from {source_image}")
+        logger.info(f"Pulling container image", source=source_image)
         async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
             await client.pull_image(source_image, tag=CONTAINER_IMAGE_NAME)
 
@@ -171,7 +173,7 @@ class ContainerService:
         if not containers:
             raise RuntimeError("No unassigned containers found")
         container = random.choice(containers)
-        logger.info(f"Randomly selected unassigned container {container.id}")
+        logger.info(f"Randomly selected unassigned container", container=container.dump())
         return container
 
     @classmethod
@@ -191,9 +193,7 @@ class ContainerService:
 
             await cls._write_metadata(container, user)
 
-            logger.info(
-                f"Assigned container {container.hostname} ({container.validated_ip}) to user {user.user_id} ({user.name})"
-            )
+            logger.info("Container assigned to user", container=container.dump(), user=user.dump())
 
             return container
 
@@ -209,8 +209,9 @@ class ContainerService:
             dst_dir = settings.cleanup_container_mount_parent_dir / container.mount_dir.name
             await asyncio.to_thread(shutil.move, container.mount_dir, dst_dir)
             logger.info(
-                f"Purged container {container.hostname} ({container.id})"
-                f" and moved its mount directory to {dst_dir}"
+                f"Purged container removed its mount dir",
+                container=container.dump(),
+                cleanup_dir=dst_dir.as_posix(),
             )
 
     @classmethod
@@ -225,7 +226,7 @@ class ContainerService:
 
             # refresh the container object
             container = await _client.get_container(id=container.id)
-            logger.info(f"Checkpointed container {container.hostname}")
+            logger.info(f"Checkpointed container", container=container.dump())
 
             return container
 
@@ -241,7 +242,7 @@ class ContainerService:
 
             # refresh the container object
             container = await _client.get_container(id=container.id)
-            logger.info(f"Restored container {container.hostname} ({container.validated_ip})")
+            logger.info(f"Restored container", container=container.dump())
 
             return container
 
@@ -257,8 +258,8 @@ class ContainerService:
             try:
                 return await cls._create_or_replace_container_impl(_client, mount_dir=mount_dir)
             except Exception as e:
-                logger.error(
-                    f"Failed to create or reload container for mount_dir: {mount_dir}: {e}"
+                logger.exception(
+                    f"Failed to create or reload container", error=e, mount_dir=mount_dir
                 )
                 raise e
 
@@ -319,7 +320,7 @@ class ContainerService:
             cap_adds=cap_adds,
             cmd=cmd,
         )
-        logger.info(f"Created or reloaded container hostname: {hostname}, id: {container.id}")
+        logger.info(f"Created or reloaded container", container=container.dump())
         return container
 
     @classmethod

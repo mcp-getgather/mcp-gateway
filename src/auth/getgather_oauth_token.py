@@ -2,8 +2,8 @@ import re
 
 from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.auth.auth import AccessToken
+from loguru import logger
 
-from src.logs import logger
 from src.settings import OAUTH_SCOPES, settings
 
 GETGATHER_OATUH_TOKEN_PREFIX = "getgather"
@@ -29,13 +29,15 @@ class GetgatherAuthTokenVerifier(TokenVerifier):
             or parts[0] != GETGATHER_OATUH_TOKEN_PREFIX
             or parts[1] not in settings.GETGATHER_APPS
         ):
-            logger.warning(f"Invalid getgather token: {token}")
+            logger.warning("Invalid getgather token", token=token)
             return None
 
         sub = "_".join(parts[2:])
         if not GETGATHER_USER_ID_PATTERN.match(sub):
             logger.warning(
-                f"Getgather user id {sub} does not match pattern {GETGATHER_USER_ID_PATTERN.pattern}"
+                "Getgather user id does not match pattern",
+                user_id=sub,
+                pattern=GETGATHER_USER_ID_PATTERN.pattern,
             )
             return None
 

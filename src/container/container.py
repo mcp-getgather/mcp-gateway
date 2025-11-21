@@ -59,3 +59,6 @@ class Container(BaseModel):
     @classmethod
     def metadata_file_for_hostname(cls, hostname: str) -> Path:
         return cls.mount_dir_for_hostname(hostname) / "metadata.json"
+
+    def dump(self):
+        return self.model_dump(exclude_none=True, mode="json")

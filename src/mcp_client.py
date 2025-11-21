@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import HTTPException
+from loguru import logger
 from mcp.client.auth import OAuthClientProvider, TokenStorage
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -12,7 +13,6 @@ from pydantic import AnyUrl, BaseModel
 
 from src.auth.auth import AuthUser
 from src.container.manager import Container, ContainerManager
-from src.logs import logger
 from src.settings import settings
 
 
@@ -99,12 +99,12 @@ async def _auth_and_connect(
 ) -> MCPDataResponse | MCPAuthResponse:
     """Create a one-time mcp client with to fetch the user and container info."""
     if state:
-        logger.info(f"Resuming auth for {mcp_name} with state {state}")
+        logger.info(f"Resuming auth", mcp=mcp_name, state=state)
         oauth_data = OAuthData.get(state)
         if not oauth_data:
             raise HTTPException(status_code=400, detail="Invalid state")
     else:
-        logger.info(f"Starting new auth for {mcp_name}")
+        logger.info(f"Starting new auth", mcp=mcp_name)
         oauth_data = OAuthData(mcp_name=mcp_name)
 
     if oauth_data.auth_completed:
@@ -175,7 +175,7 @@ async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthDat
     async with streamablehttp_client(server_url, auth=oauth_auth) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            logger.info(f"Connected to {server_url}")
+            logger.info(f"Connected to server", url=server_url)
 
             oauth_data.auth_completed = True
             oauth_data.code_ready.set()
@@ -193,7 +193,7 @@ async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthDat
 
 async def handle_auth_code(*, state: str, code: str):
     """Process the received auth code. Then wait for the data to be ready."""
-    logger.info(f"Handling auth code for state {state}")
+    logger.info(f"Handling auth code", state=state)
 
     oauth_data = OAuthData.get(state)
     if not oauth_data:

@@ -4,10 +4,10 @@ import httpx
 import logfire
 import segment.analytics as analytics
 from fastapi import Request, Response
+from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.container.manager import Container, ContainerManager
-from src.logs import logger
 from src.settings import settings
 
 HOSTED_LINK_PATHS = ["/link", "/api/auth", "/api/link", "/dpage"]
@@ -29,7 +29,7 @@ class WebProxyMiddleware(BaseHTTPMiddleware):
             try:
                 container = await self._get_server_container(path)
             except Exception as e:
-                logger.error(f"Invalid url: {path}, error: {e}", exc_info=True)
+                logger.exception(f"Invalid url", error=e, url=path)
                 return Response(status_code=400, content="Invalid url")
             return await self._proxy_request(request, container)
         else:
@@ -38,9 +38,7 @@ class WebProxyMiddleware(BaseHTTPMiddleware):
     async def _proxy_request(self, request: Request, container: Container) -> Response:
         path = request.url.path
         analytics.track(container.hostname, "web_request", {"path": path})  # type: ignore[reportUnknownMemberType]
-        logger.info(
-            f"Proxy web request {path} to container {container.hostname} ({container.validated_ip})"
-        )
+        logger.info(f"Proxy web request", container=container.dump(), path=path)
 
         url = f"http://{container.validated_ip}{request.url.path}"
         if request.url.query:

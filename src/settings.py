@@ -86,5 +86,12 @@ class Settings(BaseSettings):
             path.mkdir(parents=True, exist_ok=True)
         return path
 
+    @property
+    def logs_dir(self) -> Path:
+        path = Path(self.HOST_DATA_DIR).expanduser() / "logs"
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+        return path
+
 
 settings = Settings()
