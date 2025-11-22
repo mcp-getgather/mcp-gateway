@@ -1,9 +1,10 @@
 from typing import cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.requests import Request
 from fastapi.templating import Jinja2Templates
 from fastmcp.server.dependencies import get_access_token
+from loguru import logger
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.provider import TokenVerifier
@@ -14,7 +15,9 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.responses import RedirectResponse
 from starlette.types import Receive, Scope, Send
 
-from src.settings import FRONTEND_DIR, OAUTH_PROVIDER_TYPE
+from src.auth.constants import OAUTH_PROVIDER_NAME
+from src.auth.multi_oauth_provider import MultiOAuthProvider, auth_enabled
+from src.settings import FRONTEND_DIR
 
 
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
@@ -41,9 +44,11 @@ class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
 
 
 def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
-    # Dynamically import MultiOAuthProvider only if authentication is enabled
-    # to avoid OAuthProvider missing keys errors
-    from src.auth.multi_oauth_provider import MultiOAuthProvider
+    if not auth_enabled():
+        logger.warning("MCP authentication is disabled")
+        return
+
+    logger.info("Setting up MCP authentication")
 
     auth_provider = MultiOAuthProvider()
 
@@ -82,8 +87,13 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
         app.add_middleware(middleware.cls, *middleware.args, **middleware.kwargs)
 
     @app.get("/signin")
-    def auth_options(github_url: str, google_url: str, request: Request):  # type: ignore[reportUnusedFunction]
+    def auth_options(  # type: ignore[reportUnusedFunction]
+        request: Request, github_url: str | None = None, google_url: str | None = None
+    ):
         """Page to allow user to select the authentication provider."""
+        if not github_url and not google_url:
+            return HTTPException(status_code=500, detail="No authentication providers configured")
+
         templates = Jinja2Templates(directory=FRONTEND_DIR)
         return templates.TemplateResponse(
             request,
@@ -94,7 +104,7 @@ def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
 
 class AuthUser(BaseModel):
     sub: str
-    auth_provider: OAUTH_PROVIDER_TYPE
+    auth_provider: OAUTH_PROVIDER_NAME
 
     name: str | None = None
 
@@ -117,13 +127,17 @@ class AuthUser(BaseModel):
         parts = user_id.split(".")
         if len(parts) != 2:
             raise ValueError(f"Invalid user id: {user_id}")
-        return cls(sub=".".join(parts[:-1]), auth_provider=cast(OAUTH_PROVIDER_TYPE, parts[-1]))
+        return cls(sub=".".join(parts[:-1]), auth_provider=cast(OAUTH_PROVIDER_NAME, parts[-1]))
 
     def dump(self):
         return self.model_dump(exclude_none=True, mode="json")
 
 
 def get_auth_user() -> AuthUser:
+    if not auth_enabled():
+        # for testing only when auth is disabled
+        return AuthUser(sub="test_user", auth_provider="getgather")
+
     token = get_access_token()
     if not token:
         raise RuntimeError("No auth user found")
