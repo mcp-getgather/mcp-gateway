@@ -9,8 +9,6 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
-OAUTH_PROVIDER_TYPE = Literal["github", "google", "getgather"]
-OAUTH_SCOPES = ["getgather_user_scope"]  # dummy scope to make scope validation work
 
 
 class Settings(BaseSettings):
@@ -61,15 +59,6 @@ class Settings(BaseSettings):
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
         return self
-
-    @property
-    def auth_enabled(self) -> bool:
-        return all([
-            self.OAUTH_GITHUB_CLIENT_ID,
-            self.OAUTH_GITHUB_CLIENT_SECRET,
-            self.OAUTH_GOOGLE_CLIENT_ID,
-            self.OAUTH_GOOGLE_CLIENT_SECRET,
-        ])
 
     @property
     def container_mount_parent_dir(self) -> Path:

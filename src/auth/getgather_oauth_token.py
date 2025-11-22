@@ -4,7 +4,8 @@ from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.auth.auth import AccessToken
 from loguru import logger
 
-from src.settings import OAUTH_SCOPES, settings
+from src.auth.constants import OAUTH_SCOPES
+from src.settings import settings
 
 GETGATHER_OATUH_TOKEN_PREFIX = "getgather"
 
