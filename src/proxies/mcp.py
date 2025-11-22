@@ -1,3 +1,5 @@
+import json
+from contextvars import ContextVar
 from time import sleep
 from typing import Any, NamedTuple
 from urllib.parse import urlparse
@@ -15,6 +17,8 @@ from src.auth.auth import get_auth_user
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.settings import settings
+
+incoming_headers_context: ContextVar[dict[str, str]] = ContextVar("incoming_headers", default={})
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
@@ -53,6 +57,24 @@ def _create_client_factory(path: str):
             user=user.dump(),
             path=path,
         )
+        incoming_headers = incoming_headers_context.get()
+        if "x-location" in incoming_headers:
+            # Parse JSON to avoid loguru formatting issues with curly braces
+            try:
+                location_data = json.loads(incoming_headers["x-location"])
+                logger.debug("Intercepted x-location", location=location_data)
+            except json.JSONDecodeError:
+                logger.debug("Intercepted x-location (raw)", location_raw=incoming_headers["x-location"])
+            headers["x-location"] = incoming_headers["x-location"]
+
+        # Parse x-location in headers for logging if present
+        headers_for_logging = headers.copy()
+        if "x-location" in headers_for_logging:
+            try:
+                headers_for_logging["x-location"] = json.loads(headers_for_logging["x-location"])
+            except (json.JSONDecodeError, TypeError):
+                pass  # Keep as-is if not valid JSON
+        logger.info("Current Headers", headers=headers_for_logging)
         data = user.dump()
         data["path"] = path
         analytics.identify(container.hostname, data)  # type: ignore[reportUnknownMemberType]
