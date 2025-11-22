@@ -1,4 +1,5 @@
 data/
+proxies.yaml
 node_modules/
 .playwright*
 

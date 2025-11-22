@@ -14,7 +14,7 @@ from src.container.manager import ContainerManager
 from src.container.service import ContainerService
 from src.logs import setup_logging
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
-from src.proxies.mcp import get_mcp_apps
+from src.proxies.mcp import get_mcp_apps, incoming_headers_context
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
 
@@ -60,6 +60,15 @@ logfire.configure(
 def create_app():
     app = FastAPI(lifespan=lifespan)
     logfire.instrument_fastapi(app)
+
+    # Middleware to store incoming request headers for MCP routes
+    @app.middleware("http")
+    async def store_mcp_headers(request, call_next):
+        if request.url.path.startswith("/mcp"):
+            # Store all incoming headers in context for access during request
+            incoming_headers_context.set(dict(request.headers))
+        response = await call_next(request)
+        return response
 
     app.add_middleware(WebProxyMiddleware)
 

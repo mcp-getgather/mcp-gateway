@@ -342,7 +342,7 @@ async def run_cli(
     if on_error:
         returncode, error = on_error(returncode, error)
 
-    logger.debug(f"Executed CLI command", return_code=returncode, command=cmd_str, env=env)
+    logger.debug("Executed CLI command", return_code=returncode, command=cmd_str, env=env)
 
     if returncode != 0:
         raise Exception(f"CLI failed: {error}\n{cmd_msg}")
