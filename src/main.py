@@ -1,10 +1,11 @@
 import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
+from typing import Awaitable, Callable
 
 import logfire
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -63,8 +64,10 @@ def create_app():
 
     # Middleware to store incoming request headers for MCP routes
     @app.middleware("http")
-    async def store_mcp_headers(request, call_next):
-        if request.url.path.startswith("/mcp"):
+    async def store_mcp_headers(  # type: ignore
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:  # type: ignore[reportUnusedFunction]
+        if request.url.path.startswith("/mcp"):  # type: ignore
             # Store all incoming headers in context for access during request
             incoming_headers_context.set(dict(request.headers))
         response = await call_next(request)

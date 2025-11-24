@@ -58,22 +58,19 @@ def _create_client_factory(path: str):
             path=path,
         )
         incoming_headers = incoming_headers_context.get()
+        headers_for_logging = headers.copy()
+
         if "x-location" in incoming_headers:
             # Parse JSON to avoid loguru formatting issues with curly braces
             try:
                 location_data = json.loads(incoming_headers["x-location"])
                 logger.debug("Intercepted x-location", location=location_data)
-            except json.JSONDecodeError:
-                logger.debug("Intercepted x-location (raw)", location_raw=incoming_headers["x-location"])
-            headers["x-location"] = incoming_headers["x-location"]
-
-        # Parse x-location in headers for logging if present
-        headers_for_logging = headers.copy()
-        if "x-location" in headers_for_logging:
-            try:
-                headers_for_logging["x-location"] = json.loads(headers_for_logging["x-location"])
+                headers_for_logging["x-location"] = location_data
             except (json.JSONDecodeError, TypeError):
-                pass  # Keep as-is if not valid JSON
+                logger.debug(
+                    "Intercepted x-location (raw)", location_raw=incoming_headers["x-location"]
+                )
+            headers["x-location"] = incoming_headers["x-location"]
         logger.info("Current Headers", headers=headers_for_logging)
         data = user.dump()
         data["path"] = path

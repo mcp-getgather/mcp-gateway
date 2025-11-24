@@ -14,7 +14,7 @@ from pydantic import BaseModel, model_validator
 from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
-from src.settings import settings
+from src.settings import PROJECT_DIR, settings
 
 logger = logger.bind(topic="service")
 
@@ -281,10 +281,13 @@ class ContainerService:
         src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
 
-        # Mount proxies.yaml from host to container
-        from src.settings import PROJECT_DIR
-        src_proxies_file = str((PROJECT_DIR / "proxies.yaml").resolve())
-        dst_proxies_file = "/app/proxies.yaml"
+        # Mount proxies.yaml from host to container if it exists
+        volumes = [f"{src_data_dir}:{dst_data_dir}:rw"]
+        proxies_file_path = PROJECT_DIR / "proxies.yaml"
+        if proxies_file_path.exists():
+            src_proxies_file = str(proxies_file_path.resolve())
+            dst_proxies_file = "/app/proxies.yaml"
+            volumes.append(f"{src_proxies_file}:{dst_proxies_file}:ro")
 
         env = {
             "ENVIRONMENT": settings.GATEWAY_ORIGIN,
@@ -319,10 +322,7 @@ class ContainerService:
             image=CONTAINER_IMAGE_NAME,
             entrypoint=entrypoint,
             envs=env,
-            volumes=[
-                f"{src_data_dir}:{dst_data_dir}:rw",
-                f"{src_proxies_file}:{dst_proxies_file}:ro",
-            ],
+            volumes=volumes,
             labels=CONTAINER_LABELS,
             cap_adds=cap_adds,
             cmd=cmd,
