@@ -60,20 +60,22 @@ def _create_client_factory(path: str):
         incoming_headers = incoming_headers_context.get()
         headers_for_logging = headers.copy()
 
+        # Forward all custom x- headers to the container (e.g., x-location, x-signin-id, x-incognito)
         for header_name, header_value in incoming_headers.items():
-            headers[header_name] = header_value
+            if header_name.lower().startswith("x-"):
+                headers[header_name] = header_value
 
-            # Special handling for x-location to parse JSON for logging
-            if header_name == "x-location":
-                try:
-                    location_data = json.loads(header_value)
-                    logger.debug("Intercepted x-location", location=location_data)
-                    headers_for_logging[header_name] = location_data
-                except (json.JSONDecodeError, TypeError):
-                    logger.debug("Intercepted x-location (raw)", location_raw=header_value)
+                # Special handling for x-location to parse JSON for logging
+                if header_name.lower() == "x-location":
+                    try:
+                        location_data = json.loads(header_value)
+                        logger.debug("Intercepted x-location", location=location_data)
+                        headers_for_logging[header_name] = location_data
+                    except (json.JSONDecodeError, TypeError):
+                        logger.debug("Intercepted x-location (raw)", location_raw=header_value)
+                        headers_for_logging[header_name] = header_value
+                else:
                     headers_for_logging[header_name] = header_value
-            else:
-                headers_for_logging[header_name] = header_value
 
         logger.info("Current Headers", headers=headers_for_logging)
         data = user.dump()
