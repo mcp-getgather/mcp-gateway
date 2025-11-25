@@ -300,6 +300,10 @@ class ContainerService:
             "DATA_DIR": dst_data_dir,
             "PORT": "80",
         }
+
+        if not proxies_file_path.exists() and settings.PROXIES_CONFIG:
+            env["PROXIES_CONFIG"] = settings.PROXIES_CONFIG
+
         cap_adds = ["NET_BIND_SERVICE"]
         entrypoint = None
         cmd = None

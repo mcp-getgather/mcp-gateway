@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     BROWSER_TIMEOUT: int = 30_000
     DEFAULT_PROXY_TYPE: str = ""
+    PROXIES_CONFIG: str = ""
 
     CONTAINER_SENTRY_DSN: str = ""
 
