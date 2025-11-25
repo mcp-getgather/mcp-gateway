@@ -19,12 +19,7 @@ from src.proxies.mcp import get_mcp_apps, incoming_headers_context
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
 
-setup_logging(
-    level=settings.LOG_LEVEL,
-    logs_dir=settings.logs_dir,
-    sentry_dsn=settings.GATEWAY_SENTRY_DSN,
-    segment_write_key=settings.SEGMENT_WRITE_KEY,
-)
+setup_logging(settings)
 
 
 @asynccontextmanager
@@ -47,20 +42,9 @@ async def lifespan(app: FastAPI):
         await background_task
 
 
-logfire.configure(
-    service_name="mcp-gateway",
-    send_to_logfire="if-token-present",
-    token=settings.LOGFIRE_TOKEN or None,
-    environment=settings.ENVIRONMENT,
-    code_source=logfire.CodeSource(
-        repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
-    ),
-)
-
-
 def create_app():
     app = FastAPI(lifespan=lifespan)
-    logfire.instrument_fastapi(app)
+    logfire.instrument_fastapi(app, capture_headers=True)
 
     # Middleware to store incoming request headers for MCP routes
     @app.middleware("http")
