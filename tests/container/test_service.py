@@ -32,7 +32,6 @@ async def test_create_new_container():
             f"LOG_LEVEL={settings.LOG_LEVEL}",
             f"BROWSER_TIMEOUT={settings.BROWSER_TIMEOUT}",
             f"DEFAULT_PROXY_TYPE={settings.DEFAULT_PROXY_TYPE}",
-            f"PROXIES_CONFIG={settings.PROXIES_CONFIG}",
             f"SENTRY_DSN={settings.CONTAINER_SENTRY_DSN}",
             f"DATA_DIR=/app/data",
             f"HOSTNAME={container.hostname}",
