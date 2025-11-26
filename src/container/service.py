@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import aiofiles
+import yaml
 from loguru import logger
 from nanoid import generate
 from pydantic import BaseModel, model_validator
@@ -15,7 +16,8 @@ from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
 from src.logs import log_decorator
-from src.settings import PROJECT_DIR, settings
+from src.residential_proxy_sessions import get_proxy_config
+from src.settings import settings
 
 logger = logger.bind(topic="service")
 
@@ -287,13 +289,24 @@ class ContainerService:
         src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
 
-        # Mount proxies.yaml from host to container if it exists
-        volumes = [f"{src_data_dir}:{dst_data_dir}:rw"]
-        proxies_file_path = PROJECT_DIR / "proxies.yaml"
-        if proxies_file_path.exists():
-            src_proxies_file = str(proxies_file_path.resolve())
-            dst_proxies_file = "/app/proxies.yaml"
-            volumes.append(f"{src_proxies_file}:{dst_proxies_file}:ro")
+        # Parse TOML proxies config and convert to YAML for container
+        # Read from settings.DEFAULT_PROXY_TYPE but always write as proxy-0
+        proxies_config = ""
+        if settings.PROXIES_CONFIG and settings.DEFAULT_PROXY_TYPE:
+            # Get the proxy config using the new residential_proxy_sessions
+            proxy = get_proxy_config(settings.PROXIES_CONFIG, settings.DEFAULT_PROXY_TYPE)
+            if proxy:
+                # Create container config with only proxy-0
+                # Convert username_template -> base_username for container
+                container_config = {
+                    "proxy-0": {
+                        "type": proxy.proxy_type,
+                        "url": proxy.url,
+                        "base_username": proxy.username_template or "",
+                        "password": proxy.password or "",
+                    }
+                }
+                proxies_config = yaml.dump(container_config)
 
         env = {
             "ENVIRONMENT": settings.GATEWAY_ORIGIN,
@@ -301,14 +314,12 @@ class ContainerService:
             "LOG_LEVEL": settings.LOG_LEVEL,
             "HOSTNAME": hostname,
             "BROWSER_TIMEOUT": settings.BROWSER_TIMEOUT,
-            "DEFAULT_PROXY_TYPE": settings.DEFAULT_PROXY_TYPE,
+            "DEFAULT_PROXY_TYPE": "proxy-0",
+            "PROXIES_CONFIG": proxies_config,
             "SENTRY_DSN": settings.CONTAINER_SENTRY_DSN,
             "DATA_DIR": dst_data_dir,
             "PORT": "80",
         }
-
-        if not proxies_file_path.exists() and settings.PROXIES_CONFIG:
-            env["PROXIES_CONFIG"] = settings.PROXIES_CONFIG
 
         cap_adds = ["NET_BIND_SERVICE"]
         entrypoint = None
@@ -332,7 +343,7 @@ class ContainerService:
             image=CONTAINER_IMAGE_NAME,
             entrypoint=entrypoint,
             envs=env,
-            volumes=volumes,
+            volumes=[f"{src_data_dir}:{dst_data_dir}:rw"],
             labels=CONTAINER_LABELS,
             cap_adds=cap_adds,
             cmd=cmd,
