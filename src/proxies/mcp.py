@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from src.auth.auth import get_auth_user
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
+from src.logs import log_decorator
 from src.settings import settings
 
 incoming_headers_context: ContextVar[dict[str, str]] = ContextVar("incoming_headers", default={})
@@ -24,6 +25,7 @@ MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
 
 class SegmentMiddleware(Middleware):
+    @log_decorator
     async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):
         user = get_auth_user()
         container = await ContainerManager.get_user_container(user)
@@ -40,6 +42,7 @@ class SegmentMiddleware(Middleware):
 
 
 def _create_client_factory(path: str):
+    @log_decorator
     async def _create_client():
         user = get_auth_user()
         container = await ContainerManager.get_user_container(user)

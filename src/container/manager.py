@@ -15,6 +15,7 @@ from src.container.service import (
     ContainerIdentity,
     ContainerService,
 )
+from src.logs import log_decorator
 from src.settings import settings
 
 logger = logger.bind(topic="manager")
@@ -105,6 +106,7 @@ class ContainerManager:
     """
 
     @classmethod
+    @log_decorator
     async def get_user_container(cls, user: AuthUser) -> Container:
         """
         Return the container assigned to the user
@@ -143,6 +145,7 @@ class ContainerManager:
         return container
 
     @classmethod
+    @log_decorator
     async def get_container_by_hostname(cls, hostname: str) -> Container:
         container = await ContainerService.get_container(hostname)
         if not container:
@@ -154,6 +157,7 @@ class ContainerManager:
         return await ContainerService.get_random_unassigned_container()
 
     @classmethod
+    @log_decorator
     async def update_containers(cls):
         """Recreate the container to update the image. Keep the same status (running, checkpointed, etc.) after update."""
         async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
@@ -193,6 +197,7 @@ class ContainerManager:
                 # else: keep UNASSIGNED container running regardless of its previous status
 
     @classmethod
+    @log_decorator
     async def refresh_standby_pool(cls):
         async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as client:
             containers = await ContainerService.get_containers(
@@ -214,6 +219,7 @@ class ContainerManager:
                 await ContainerService.create_or_replace_container(client=client)
 
     @classmethod
+    @log_decorator
     async def release_container(cls, container: Container) -> None:
         """Free up resource used by a container."""
         idt = await ContainerIdentity.from_hostname(container.hostname)
@@ -224,6 +230,7 @@ class ContainerManager:
             await ContainerService.purge_container(container)
 
     @classmethod
+    @log_decorator
     async def perform_maintenance(cls):
         """
         Perform maintenance tasks on the active assigned pool.

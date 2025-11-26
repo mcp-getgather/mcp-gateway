@@ -13,6 +13,7 @@ from pydantic import AnyUrl, BaseModel
 
 from src.auth.auth import AuthUser
 from src.container.manager import Container, ContainerManager
+from src.logs import log_decorator
 from src.settings import settings
 
 
@@ -82,6 +83,7 @@ class OAuthData:
         _oauth_states.pop(state, None)
 
 
+@log_decorator
 async def auth_and_connect(
     mcp_name: str, state: str | None = None
 ) -> MCPDataResponse | MCPAuthResponse:
@@ -191,6 +193,7 @@ async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthDat
             oauth_data.data_ready.set()
 
 
+@log_decorator
 async def handle_auth_code(*, state: str, code: str):
     """Process the received auth code. Then wait for the data to be ready."""
     logger.info(f"Handling auth code", state=state)
