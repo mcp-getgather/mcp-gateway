@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import logfire
 import segment.analytics as analytics
 import sentry_sdk
 import yaml
@@ -14,28 +15,24 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 if TYPE_CHECKING:
     from loguru import HandlerConfig, Record
 
+    from src.settings import Settings
+
 LOGGER_NAME = Path(__file__).parent.name  # Assume the parent directory name is the project name
 
 
-def setup_logging(
-    *,
-    level: str = "INFO",
-    logs_dir: Path | None = None,
-    sentry_dsn: str | None = None,
-    segment_write_key: str | None = None,
-):
-    _setup_logger(level, logs_dir)
+def setup_logging(settings: "Settings"):
+    _setup_logger(settings.LOG_LEVEL, settings.logs_dir)
 
     # setup sentry
-    if sentry_dsn:
+    if settings.GATEWAY_SENTRY_DSN:
         logger.info("Initializing Sentry")
         sentry_sdk.init(
-            dsn=sentry_dsn,
+            dsn=settings.GATEWAY_SENTRY_DSN,
             _experiments={"enable_logs": True},
             integrations=[
                 StarletteIntegration(transaction_style="url"),
                 FastApiIntegration(transaction_style="url"),
-                LoggingIntegration(level=logging.getLevelNamesMapping()[level]),
+                LoggingIntegration(level=logging.getLevelNamesMapping()[settings.LOG_LEVEL]),
             ],
             send_default_pii=True,
         )
@@ -43,14 +40,26 @@ def setup_logging(
         logger.warning("No GATEWAY_SENTRY_DSN provided, Sentry is disabled")
 
     # setup segment
-    if segment_write_key:
+    if settings.SEGMENT_WRITE_KEY:
         logger.info("Initializing Segment")
-        analytics.write_key = segment_write_key
+        analytics.write_key = settings.SEGMENT_WRITE_KEY
     else:
         logger.warning("No SEGMENT_WRITE_KEY provided, Segment is disabled")
         analytics.write_key = "disabled"
         analytics.debug = False
         analytics.send = False
+
+    # setup logfire
+    if settings.LOGFIRE_TOKEN:
+        logfire.configure(
+            service_name="mcp-gateway",
+            send_to_logfire="if-token-present",
+            token=settings.LOGFIRE_TOKEN,
+            environment=settings.ENVIRONMENT,
+            code_source=logfire.CodeSource(
+                repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
+            ),
+        )
 
 
 LOG_FILE_TOPICS = frozenset(["manager", "service"])

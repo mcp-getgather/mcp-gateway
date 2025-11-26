@@ -66,8 +66,10 @@ def _get_assigned_container_pool_size():
     run simultaneously using 90% of the available memory.
     """
     memory = psutil.virtual_memory()
-    max_num_containers = int(memory.available / CONTAINER_MEMORY_BYTES * 0.9)
-    return max_num_containers - settings.NUM_STANDBY_CONTAINERS
+    max_num_containers = int(memory.total / CONTAINER_MEMORY_BYTES * 0.9)
+    size = max_num_containers - settings.NUM_STANDBY_CONTAINERS
+    logger.info(f"Max number of assigned containers in the active pool: {size}")
+    return size
 
 
 _cleanup_async_tasks = set[asyncio.Task[None]]()

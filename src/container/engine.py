@@ -33,7 +33,7 @@ class ContainerEngineClient:
         self.socket = get_container_engine_socket(engine)
         self.startup_seconds = startup_seconds
 
-    async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 2) -> str:
+    async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 5) -> str:
         if platform.system() != "Darwin":
             env = env or {}
             env["DOCKER_HOST"] = self.socket
@@ -209,7 +209,7 @@ class ContainerEngineClient:
         await self.run("container", "rename", id, new_name)
 
     async def pull_image(self, image: str, *, tag: str | None = None):
-        await self.run("image", "pull", image, timeout=60)
+        await self.run("image", "pull", image, timeout=60 * 3)
         if tag:
             await self.run("image", "tag", image, tag)
 
@@ -314,7 +314,7 @@ async def run_cli(
     cmd: str,
     *args: str,
     env: dict[str, str] | None = None,
-    timeout: float = 2,
+    timeout: float = 5,
     on_error: CLIOnError | None = None,
 ) -> str:
     """
@@ -342,7 +342,7 @@ async def run_cli(
     if on_error:
         returncode, error = on_error(returncode, error)
 
-    logger.debug(f"Executed CLI command", return_code=returncode, command=cmd_str, env=env)
+    logger.debug("Executed CLI command", return_code=returncode, command=cmd_str, env=env)
 
     if returncode != 0:
         raise Exception(f"CLI failed: {error}\n{cmd_msg}")

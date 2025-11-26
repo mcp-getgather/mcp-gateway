@@ -1,10 +1,11 @@
 import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
+from typing import Awaitable, Callable
 
 import logfire
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -14,16 +15,11 @@ from src.container.manager import ContainerManager
 from src.container.service import ContainerService
 from src.logs import setup_logging
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
-from src.proxies.mcp import get_mcp_apps
+from src.proxies.mcp import get_mcp_apps, incoming_headers_context
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
 
-setup_logging(
-    level=settings.LOG_LEVEL,
-    logs_dir=settings.logs_dir,
-    sentry_dsn=settings.GATEWAY_SENTRY_DSN,
-    segment_write_key=settings.SEGMENT_WRITE_KEY,
-)
+setup_logging(settings)
 
 
 @asynccontextmanager
@@ -46,20 +42,20 @@ async def lifespan(app: FastAPI):
         await background_task
 
 
-logfire.configure(
-    service_name="mcp-gateway",
-    send_to_logfire="if-token-present",
-    token=settings.LOGFIRE_TOKEN or None,
-    environment=settings.ENVIRONMENT,
-    code_source=logfire.CodeSource(
-        repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
-    ),
-)
-
-
 def create_app():
     app = FastAPI(lifespan=lifespan)
-    logfire.instrument_fastapi(app)
+    logfire.instrument_fastapi(app, capture_headers=True)
+
+    # Middleware to store incoming request headers for MCP routes
+    @app.middleware("http")
+    async def store_mcp_headers(  # type: ignore
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:  # type: ignore[reportUnusedFunction]
+        if request.url.path.startswith("/mcp"):  # type: ignore
+            # Store all incoming headers in context for access during request
+            incoming_headers_context.set(dict(request.headers))
+        response = await call_next(request)
+        return response
 
     app.add_middleware(WebProxyMiddleware)
 
