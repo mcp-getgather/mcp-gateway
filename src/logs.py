@@ -1,9 +1,10 @@
 import functools
 import inspect
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Awaitable, ParamSpec, TypeVar, cast, overload
 
 import logfire
 import segment.analytics as analytics
@@ -130,18 +131,18 @@ def _setup_logger(level: str, logs_dir: Path | None = None, verbose: bool = Fals
         lib_logger.propagate = False
 
 
-def get_utcnow():
+def get_utcnow() -> datetime:
     """Return the current UTC time."""
     return datetime.now(timezone.utc)
 
 
-def _format_args_kwargs(func, args, kwargs):
+def _format_args_kwargs(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, str]:
     """Format function arguments for logging."""
     sig = inspect.signature(func)
     bound_args = sig.bind_partial(*args, **kwargs)
     bound_args.apply_defaults()
 
-    formatted = {}
+    formatted: dict[str, str] = {}
     for name, value in bound_args.arguments.items():
         # Truncate long values
         str_value = str(value)
@@ -152,7 +153,20 @@ def _format_args_kwargs(func, args, kwargs):
     return formatted
 
 
-def log_decorator(func):
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+# Overloads for sync and async functions
+@overload
+def log_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]: ...
+
+
+@overload
+def log_decorator(func: Callable[P, R]) -> Callable[P, R]: ...
+
+
+def log_decorator(func: Callable[P, R] | Callable[P, Awaitable[R]]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
     """Wrap regular or coroutine function with extra logging.
 
     This method will record to Datadog start and end times for the
@@ -169,10 +183,10 @@ def log_decorator(func):
     """
 
     @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs):
+    def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             start = get_utcnow()
-            extra = {"func": func.__name__, "decorator_log": True}
+            extra: dict[str, Any] = {"func": func.__name__, "decorator_log": True}
 
             # Add args and kwargs to extra
             try:
@@ -192,25 +206,25 @@ def log_decorator(func):
                 f"Finished {func.__name__}",
                 extra=extra,
             )
-            return result
+            return cast(R, result)
         except Exception as e:
             with sentry_sdk.push_scope() as scope:
                 scope.set_tag("func", func.__name__)
 
-            extra = {"func": func.__name__, "error": str(e), "decorator_log": True}
+            error_extra: dict[str, Any] = {"func": func.__name__, "error": str(e), "decorator_log": True}
             logger.exception(
                 f"Exception raised in {func.__name__}",
-                extra=extra,
+                extra=error_extra,
             )
 
             # Re-raise the exception so it triggers Sentry
             raise
 
     @functools.wraps(func)
-    async def async_wrapper(*args, **kwargs):
+    async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         # NOTE: We may need to make the network calls asynchronous which is a lot more complex given loggers may not work well with async code
 
-        extra = {"func": func.__name__, "decorator_log": True}
+        extra: dict[str, Any] = {"func": func.__name__, "decorator_log": True}
 
         # Add args and kwargs to extra
         try:
@@ -224,7 +238,7 @@ def log_decorator(func):
             logger.debug(f"Starting {func.__name__}", extra=extra)
 
             # Await the asynchronous function
-            result = await func(*args, **kwargs)
+            result = await cast(Awaitable[R], func(*args, **kwargs))
 
             duration = (get_utcnow() - start).total_seconds()
             extra["duration_sec"] = duration
@@ -234,16 +248,16 @@ def log_decorator(func):
             with sentry_sdk.push_scope() as scope:
                 scope.set_tag("func", func.__name__)
 
-            extra = {"func": func.__name__, "error": str(e), "decorator_log": True}
+            async_error_extra: dict[str, Any] = {"func": func.__name__, "error": str(e), "decorator_log": True}
             logger.exception(
                 f"Exception raised in {func.__name__}",
-                extra=extra,
+                extra=async_error_extra,
             )
 
             # Re-raise the exception so it triggers Sentry
             raise
 
     if inspect.iscoroutinefunction(func):
-        return async_wrapper
+        return async_wrapper  # type: ignore[return-value]
     else:
-        return sync_wrapper
+        return sync_wrapper  # type: ignore[return-value]

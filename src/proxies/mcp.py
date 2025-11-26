@@ -26,7 +26,7 @@ MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
 class SegmentMiddleware(Middleware):
     @log_decorator
-    async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):
+    async def __call__(self, context: MiddlewareContext, call_next: CallNext[Any, Any]):  # type: ignore[override]
         user = get_auth_user()
         container = await ContainerManager.get_user_container(user)
 

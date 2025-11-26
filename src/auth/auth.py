@@ -14,7 +14,6 @@ from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.responses import RedirectResponse
 from starlette.types import Receive, Scope, Send
 
-from src.logs import log_decorator
 from src.settings import FRONTEND_DIR, OAUTH_PROVIDER_TYPE
 
 
@@ -41,7 +40,6 @@ class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
             await self.app(scope, receive, send)
 
 
-@log_decorator
 def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
     # Dynamically import MultiOAuthProvider only if authentication is enabled
     # to avoid OAuthProvider missing keys errors
@@ -125,7 +123,6 @@ class AuthUser(BaseModel):
         return self.model_dump(exclude_none=True, mode="json")
 
 
-@log_decorator
 def get_auth_user() -> AuthUser:
     token = get_access_token()
     if not token:

@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Callable, TypeVar
+from typing import Callable, Coroutine, TypeVar, cast
 
 import psutil
 from cachetools import TTLCache
@@ -76,8 +76,9 @@ def _get_assigned_container_pool_size():
 _cleanup_async_tasks = set[asyncio.Task[None]]()
 
 
-def _cleanup_container(container_id: str, container: Container):
-    task = asyncio.create_task(ContainerManager.release_container(container))
+def _cleanup_container(container_id: str, container: Container) -> None:
+    coro = cast(Coroutine[None, None, None], ContainerManager.release_container(container))
+    task: asyncio.Task[None] = asyncio.create_task(coro)
     _cleanup_async_tasks.add(task)
 
 
