@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
+    VERBOSE: bool = False
     GIT_REV: str = "main"
     LOGFIRE_TOKEN: str = ""
     SEGMENT_WRITE_KEY: str = ""

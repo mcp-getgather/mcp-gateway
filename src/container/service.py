@@ -14,6 +14,7 @@ from pydantic import BaseModel, model_validator
 from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
+from src.logs import log_decorator
 from src.settings import PROJECT_DIR, settings
 
 logger = logger.bind(topic="service")
@@ -177,6 +178,7 @@ class ContainerService:
         return container
 
     @classmethod
+    @log_decorator
     async def assign_container(cls, user: AuthUser, *, client: ContainerEngineClient | None = None):
         async with engine_client(
             client=client, network=CONTAINER_NETWORK_NAME, lock="write"
@@ -198,6 +200,7 @@ class ContainerService:
             return container
 
     @classmethod
+    @log_decorator
     async def purge_container(
         cls, container: Container, *, client: ContainerEngineClient | None = None
     ):
@@ -215,6 +218,7 @@ class ContainerService:
             )
 
     @classmethod
+    @log_decorator
     async def checkpoint_container(
         cls, container: Container, *, client: ContainerEngineClient | None = None
     ):
@@ -231,6 +235,7 @@ class ContainerService:
             return container
 
     @classmethod
+    @log_decorator
     async def restore_container(
         cls, container: Container, *, client: ContainerEngineClient | None = None
     ):
@@ -247,6 +252,7 @@ class ContainerService:
             return container
 
     @classmethod
+    @log_decorator
     async def create_or_replace_container(
         cls, *, mount_dir: Path | None = None, client: ContainerEngineClient | None = None
     ) -> Container:

@@ -19,7 +19,7 @@ from src.proxies.mcp import get_mcp_apps, incoming_headers_context
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
 
-setup_logging(settings)
+setup_logging()
 
 
 @asynccontextmanager
