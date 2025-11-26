@@ -18,12 +18,12 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 if TYPE_CHECKING:
     from loguru import HandlerConfig, Record
 
-    from src.settings import Settings
+from src.settings import settings
 
 LOGGER_NAME = Path(__file__).parent.name  # Assume the parent directory name is the project name
 
 
-def setup_logging(settings: "Settings"):
+def setup_logging():
     _setup_logger(settings.LOG_LEVEL, settings.logs_dir, settings.VERBOSE)
 
     # setup sentry
