@@ -136,7 +136,9 @@ def get_utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _format_args_kwargs(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, str]:
+def _format_args_kwargs(
+    func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> dict[str, str]:
     """Format function arguments for logging."""
     sig = inspect.signature(func)
     bound_args = sig.bind_partial(*args, **kwargs)
@@ -166,7 +168,9 @@ def log_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
 def log_decorator(func: Callable[P, R]) -> Callable[P, R]: ...
 
 
-def log_decorator(func: Callable[P, R] | Callable[P, Awaitable[R]]) -> Callable[P, R] | Callable[P, Awaitable[R]]:
+def log_decorator(
+    func: Callable[P, R] | Callable[P, Awaitable[R]],
+) -> Callable[P, R] | Callable[P, Awaitable[R]]:
     """Wrap regular or coroutine function with extra logging.
 
     This method will record to Datadog start and end times for the
@@ -211,7 +215,11 @@ def log_decorator(func: Callable[P, R] | Callable[P, Awaitable[R]]) -> Callable[
             with sentry_sdk.push_scope() as scope:
                 scope.set_tag("func", func.__name__)
 
-            error_extra: dict[str, Any] = {"func": func.__name__, "error": str(e), "decorator_log": True}
+            error_extra: dict[str, Any] = {
+                "func": func.__name__,
+                "error": str(e),
+                "decorator_log": True,
+            }
             logger.exception(
                 f"Exception raised in {func.__name__}",
                 extra=error_extra,
@@ -248,7 +256,11 @@ def log_decorator(func: Callable[P, R] | Callable[P, Awaitable[R]]) -> Callable[
             with sentry_sdk.push_scope() as scope:
                 scope.set_tag("func", func.__name__)
 
-            async_error_extra: dict[str, Any] = {"func": func.__name__, "error": str(e), "decorator_log": True}
+            async_error_extra: dict[str, Any] = {
+                "func": func.__name__,
+                "error": str(e),
+                "decorator_log": True,
+            }
             logger.exception(
                 f"Exception raised in {func.__name__}",
                 extra=async_error_extra,
