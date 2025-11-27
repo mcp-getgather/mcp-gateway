@@ -259,16 +259,16 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
     """
     try:
         config_dict = tomllib.loads(toml_str)
-        proxies = {}
+        proxies: dict[str, ProxyConfig] = {}
 
         for name, proxy_data in config_dict.items():
             proxies[name] = ProxyConfig(
-                proxy_type=proxy_data.get("type", "none"),
-                url=proxy_data.get("url"),
-                url_template=proxy_data.get("url_template"),
-                username_template=proxy_data.get("username_template"),
-                base_username=proxy_data.get("base_username"),
-                password=proxy_data.get("password"),
+                proxy_type=proxy_data.get("type", "none"),  # type: ignore[arg-type]
+                url=proxy_data.get("url"),  # type: ignore[arg-type]
+                url_template=proxy_data.get("url_template"),  # type: ignore[arg-type]
+                username_template=proxy_data.get("username_template"),  # type: ignore[arg-type]
+                base_username=proxy_data.get("base_username"),  # type: ignore[arg-type]
+                password=proxy_data.get("password"),  # type: ignore[arg-type]
             )
 
         logger.info(f"Parsed {len(proxies)} proxies from TOML config")
@@ -293,3 +293,96 @@ def get_proxy_config(
     """
     proxies = parse_proxies_toml(toml_config)
     return proxies.get(proxy_name)
+
+
+def select_and_build_proxy_config(
+    toml_config: str,
+    proxy_name: str | None,
+    default_proxy_name: str | None,
+    profile_id: str,
+    location: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Select a proxy from TOML config and build its configuration.
+
+    Selection priority:
+    1. proxy_name (from x-proxy-type header)
+    2. default_proxy_name (from settings.DEFAULT_PROXY_TYPE)
+    3. First available proxy in config
+
+    Args:
+        toml_config: TOML configuration string with all available proxies
+        proxy_name: Proxy name from x-proxy-type header (e.g., "proxy-1")
+        default_proxy_name: Default proxy name from settings (e.g., "proxy-0")
+        profile_id: Profile ID to use as session identifier
+        location: Optional location dict from x-location-info header
+
+    Returns:
+        dict: Single proxy config in format: {"proxy-0": {...}} or None if no proxy
+    """
+    if not toml_config:
+        logger.info("No TOML config provided, skipping proxy selection")
+        return None
+
+    # Parse all available proxies
+    all_proxies = parse_proxies_toml(toml_config)
+    if not all_proxies:
+        logger.info("No proxies found in TOML config")
+        return None
+
+    # Determine which proxy to use (priority order)
+    target_name = proxy_name or default_proxy_name or None
+
+    selected_proxy_name = None
+    selected_proxy_config = None
+
+    if target_name and target_name in all_proxies:
+        selected_proxy_name = target_name
+        selected_proxy_config = all_proxies[target_name]
+        source = "x-proxy-type header" if proxy_name else "DEFAULT_PROXY_TYPE setting"
+        logger.info(
+            f"Selected proxy from {source}",
+            proxy_name=selected_proxy_name,
+            proxy_type=selected_proxy_config.proxy_type,
+        )
+    elif target_name:
+        logger.warning(
+            f"Proxy '{target_name}' not found in config, will use first proxy"
+        )
+
+    # If no target name or not found, use the first proxy
+    if not selected_proxy_config:
+        selected_proxy_name = next(iter(all_proxies.keys()))
+        selected_proxy_config = all_proxies[selected_proxy_name]
+        logger.info(
+            f"Using first available proxy",
+            proxy_name=selected_proxy_name,
+            proxy_type=selected_proxy_config.proxy_type,
+        )
+
+    # Build the proxy config with location info
+    resolved_proxy = build_proxy_config(selected_proxy_config, profile_id, location)
+
+    if not resolved_proxy:
+        logger.info("Proxy config resolved to None (likely type='none')")
+        return None
+
+    # Return as single proxy named "proxy-0"
+    result = {
+        "proxy-0": {
+            "type": selected_proxy_config.proxy_type,
+            "server": resolved_proxy["server"],
+            "username": resolved_proxy.get("username", ""),
+            "password": resolved_proxy.get("password", ""),
+        }
+    }
+
+    logger.info(
+        f"Built proxy config for container",
+        original_name=selected_proxy_name,
+        proxy_type=selected_proxy_config.proxy_type,
+        server=resolved_proxy["server"],
+        has_username=bool(resolved_proxy.get("username")),
+        has_password=bool(resolved_proxy.get("password")),
+    )
+
+    return result

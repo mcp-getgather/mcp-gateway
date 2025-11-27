@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import aiofiles
-import yaml
 from loguru import logger
 from nanoid import generate
 from pydantic import BaseModel, model_validator
@@ -16,7 +15,6 @@ from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
 from src.logs import log_decorator
-from src.residential_proxy_sessions import get_proxy_config
 from src.settings import settings
 
 logger = logger.bind(topic="service")
@@ -289,24 +287,9 @@ class ContainerService:
         src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
 
-        # Parse TOML proxies config and convert to YAML for container
-        # Read from settings.DEFAULT_PROXY_TYPE but always write as proxy-0
-        proxies_config = ""
-        if settings.PROXIES_CONFIG and settings.DEFAULT_PROXY_TYPE:
-            # Get the proxy config using the new residential_proxy_sessions
-            proxy = get_proxy_config(settings.PROXIES_CONFIG, settings.DEFAULT_PROXY_TYPE)
-            if proxy:
-                # Create container config with only proxy-0
-                # Convert username_template -> base_username for container
-                container_config = {
-                    "proxy-0": {
-                        "type": proxy.proxy_type,
-                        "url": proxy.url,
-                        "base_username": proxy.username_template or "",
-                        "password": proxy.password or "",
-                    }
-                }
-                proxies_config = yaml.dump(container_config)
+        # Proxy configuration is now written dynamically to proxies.yaml in the mount
+        # directory based on request headers (x-location-info and x-proxy-type).
+        # The gateway selects the appropriate proxy and writes it as "proxy-0".
 
         env = {
             "ENVIRONMENT": settings.GATEWAY_ORIGIN,
@@ -315,7 +298,6 @@ class ContainerService:
             "HOSTNAME": hostname,
             "BROWSER_TIMEOUT": settings.BROWSER_TIMEOUT,
             "DEFAULT_PROXY_TYPE": "proxy-0",
-            "PROXIES_CONFIG": proxies_config,
             "SENTRY_DSN": settings.CONTAINER_SENTRY_DSN,
             "DATA_DIR": dst_data_dir,
             "PORT": "80",
