@@ -25,9 +25,7 @@ class ProxyConfig(BaseModel):
         if not self.url:
             return None
 
-        url_with_scheme = (
-            self.url if "://" in self.url else f"http://{self.url}"
-        )
+        url_with_scheme = self.url if "://" in self.url else f"http://{self.url}"
         parsed = urlparse(url_with_scheme)
 
         # Handle URLs with credentials like http://user:pass@host:port
@@ -82,18 +80,13 @@ def build_proxy_config(
     if proxy_config.url_template:
         full_url = _build_params(proxy_config.url_template, values)
         if not full_url:
-            logger.warning(
-                "url_template resulted in empty string, skipping proxy"
-            )
+            logger.warning("url_template resulted in empty string, skipping proxy")
             return None
 
         # Parse the built URL to extract components
         temp_config = ProxyConfig(url=full_url)
         if not temp_config.server:
-            logger.warning(
-                "Failed to parse url_template result: "
-                f"{temp_config.masked_url}"
-            )
+            logger.warning(f"Failed to parse url_template result: {temp_config.masked_url}")
             return None
 
         result = {
@@ -178,13 +171,7 @@ def _extract_values(profile_id: str, location: dict[str, Any] | None) -> dict[st
     if location.get("city"):
         values["city"] = location["city"].lower().replace(" ", "_")
         # city_compacted: removes dashes, underscores, and spaces
-        city_compacted = (
-            location["city"]
-            .lower()
-            .replace("-", "")
-            .replace("_", "")
-            .replace(" ", "")
-        )
+        city_compacted = location["city"].lower().replace("-", "").replace("_", "").replace(" ", "")
         values["city_compacted"] = city_compacted
     if location.get("postal_code"):
         values["postal_code"] = location["postal_code"]
@@ -279,9 +266,7 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
         return {}
 
 
-def get_proxy_config(
-    toml_config: str, proxy_name: str = "proxy-0"
-) -> ProxyConfig | None:
+def get_proxy_config(toml_config: str, proxy_name: str = "proxy-0") -> ProxyConfig | None:
     """Get a specific proxy configuration from TOML config.
 
     Args:
@@ -345,9 +330,7 @@ def select_and_build_proxy_config(
             proxy_type=selected_proxy_config.proxy_type,
         )
     elif target_name:
-        logger.warning(
-            f"Proxy '{target_name}' not found in config, will use first proxy"
-        )
+        logger.warning(f"Proxy '{target_name}' not found in config, will use first proxy")
 
     # If no target name or not found, use the first proxy
     if not selected_proxy_config:
