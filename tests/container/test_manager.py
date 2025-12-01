@@ -15,6 +15,7 @@ from src.container.engine import engine_client
 from src.container.manager import (
     CallbackTTLCache,
     _cleanup_container,  # type: ignore[reportPrivateUsage]
+    _get_total_num_containers,  # type: ignore[reportPrivateUsage]
 )
 from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNASSIGNED_USER_ID
 from src.settings import settings
@@ -22,7 +23,7 @@ from src.settings import settings
 
 @pytest.mark.skip(reason="Disabled for now until checkpoint/restore is fully verified")
 @pytest.mark.asyncio
-async def test_auth_user_container_lifecycle(
+async def test_persistent_container_lifecycle(
     server_factory: Callable[[], AsyncGenerator[Server, None]],
 ):
     mock_pool = CallbackTTLCache[str, Container](
@@ -75,7 +76,7 @@ async def test_auth_user_container_lifecycle(
 
 
 @pytest.mark.asyncio
-async def test_getgather_app_container_lifecycle(
+async def test_one_time_container_lifecycle(
     server_factory: Callable[[], AsyncGenerator[Server, None]],
 ):
     mock_pool = CallbackTTLCache[str, Container](
@@ -149,10 +150,12 @@ async def _assert_container_pools(
     assigned_container_status: Literal["active", "checkpointed", "deleted"] = "active",
 ) -> Container | None:
     async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
-        containers = await client.list_containers(labels=CONTAINER_LABELS)
+        containers = await client.list_containers(labels=CONTAINER_LABELS, status="running")
 
     unassigned_containers = [c for c in containers if c.name.startswith(UNASSIGNED_USER_ID)]
-    assert len(unassigned_containers) == settings.NUM_STANDBY_CONTAINERS
+    assert len(unassigned_containers) == _get_total_num_containers() - (
+        1 if user and assigned_container_status == "active" else 0
+    )
     for container in unassigned_containers:
         assert container.status == "running"
 

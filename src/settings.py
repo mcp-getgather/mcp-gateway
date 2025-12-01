@@ -48,7 +48,7 @@ class Settings(BaseSettings):
 
     CONTAINER_SENTRY_DSN: str = ""
 
-    NUM_STANDBY_CONTAINERS: int = 5
+    MAX_NUM_RUNNING_CONTAINERS: int = 5
 
     # for testing only
     TEST_GITHUB_OAUTH_TOKEN: str = ""

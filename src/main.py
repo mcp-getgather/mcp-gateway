@@ -72,7 +72,7 @@ def create_app():
             raise HTTPException(status_code=401, detail="Missing or invalid admin token")
 
         await ContainerService.pull_container_image()
-        await ContainerManager.update_containers()
+        await ContainerManager.recreate_all_containers()
 
     @app.get("/account/{mcp_name}")
     async def account(mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
@@ -98,6 +98,7 @@ async def create_server():
     Start mcp-getgather containers, fetch MCP routes,
     then set up the FastAPI server and start it.
     """
+    await ContainerManager.init_active_assigned_pool()
     await ContainerManager.refresh_standby_pool()
 
     app = create_app()
