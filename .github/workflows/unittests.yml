@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
-      fail-fast: false  
+      fail-fast: false
       matrix:
         container-engine: [docker, podman]
 
@@ -39,3 +39,4 @@ jobs:
           OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
           OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
           TEST_GITHUB_OAUTH_TOKEN: ${{ secrets.TEST_GITHUB_OAUTH_TOKEN }}
+          DEFAULT_PROXY_TYPE: proxy-1
