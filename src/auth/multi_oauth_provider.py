@@ -1,45 +1,28 @@
 from __future__ import annotations
 
-from typing import get_args
 from urllib.parse import quote
 
 from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.auth.auth import AccessToken
 from fastmcp.server.auth.oauth_proxy import OAuthProxy
-from fastmcp.server.auth.providers.github import GitHubProvider
-from fastmcp.server.auth.providers.google import GoogleProvider
 from fastmcp.utilities.storage import KVStorage
 from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams, RefreshToken
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
+from src.auth.constants import OAUTH_SCOPES
 from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
-from src.settings import OAUTH_PROVIDER_TYPE, OAUTH_SCOPES, settings
-
-OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_TYPE))
+from src.auth.third_party_providers import get_available_providers, get_provider_scopes
+from src.settings import settings
 
 getgather_auth_provider = GetgatherAuthTokenVerifier()
 
-GITHUB_AUTH_SCOPES = ["user"]
-github_auth_provider = GitHubProvider(
-    client_id=settings.OAUTH_GITHUB_CLIENT_ID,
-    client_secret=settings.OAUTH_GITHUB_CLIENT_SECRET,
-    base_url=settings.GATEWAY_ORIGIN,
-    required_scopes=GITHUB_AUTH_SCOPES,
-)
+third_party_providers = get_available_providers()
 
-GOOGLE_AUTH_SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-]
-google_auth_provider = GoogleProvider(
-    client_id=settings.OAUTH_GOOGLE_CLIENT_ID,
-    client_secret=settings.OAUTH_GOOGLE_CLIENT_SECRET,
-    base_url=settings.GATEWAY_ORIGIN,
-    required_scopes=GOOGLE_AUTH_SCOPES,
-)
+
+def auth_enabled() -> bool:
+    return bool(third_party_providers) or bool(settings.GETGATHER_APPS)
 
 
 class MultiOAuthTokenVerifier(TokenVerifier):
@@ -50,19 +33,33 @@ class MultiOAuthTokenVerifier(TokenVerifier):
         if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
             return await getgather_auth_provider.verify_token(token)
         elif token.startswith("gho_") or token.startswith("ghp_"):
-            result = await github_auth_provider.verify_token(token)
+            github_provider = third_party_providers.get("github")
+            if not github_provider:
+                raise ValueError("GitHub OAuth provider not configured")
+
+            result = await github_provider.verify_token(token)
             if result:
                 result.claims["auth_provider"] = "github"
         else:
-            result = await google_auth_provider.verify_token(token)
+            google_provider = third_party_providers.get("google")
+            if not google_provider:
+                raise ValueError("Google OAuth provider not configured")
+
+            result = await google_provider.verify_token(token)
             if result:
                 result.claims["auth_provider"] = "google"
+
         if result:  # reset scopes to use default scopes
             result.scopes = OAUTH_SCOPES
         return result
 
 
 class MultiOAuthProvider(OAuthProxy):
+    """
+    Coordinator for multiple OAuth providers, including third party providers (github and google)
+    and getgather provider, which uses predefined tokens in settings.GETGATHER_APPS.
+    """
+
     def __init__(
         self,
         *,
@@ -80,7 +77,7 @@ class MultiOAuthProvider(OAuthProxy):
             issuer_url=settings.GATEWAY_ORIGIN,
             allowed_client_redirect_uris=allowed_client_redirect_uris,
             client_storage=client_storage,
-            valid_scopes=GITHUB_AUTH_SCOPES + GOOGLE_AUTH_SCOPES,
+            valid_scopes=get_provider_scopes(),
         )
 
         self._auth_providers: dict[str, OAuthProxy] = {}  # client_id -> auth provider
@@ -92,7 +89,7 @@ class MultiOAuthProvider(OAuthProxy):
         return provider
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
-        client_info.scope = " ".join(GITHUB_AUTH_SCOPES + GOOGLE_AUTH_SCOPES)
+        client_info.scope = " ".join(get_provider_scopes())
         return await super().register_client(client_info)
 
     async def authorize(
@@ -100,13 +97,19 @@ class MultiOAuthProvider(OAuthProxy):
         client: OAuthClientInformationFull,
         params: AuthorizationParams,
     ) -> str:
+        if not third_party_providers:
+            raise ValueError("No third party OAuth providers configured")
+
         # strip scopes to use default scopes
         client.scope = None
         params.scopes = []
 
-        github_url = await github_auth_provider.authorize(client, params)
-        google_url = await google_auth_provider.authorize(client, params)
-        return "/signin?github_url=" + quote(github_url) + "&google_url=" + quote(google_url)
+        provider_urls: list[str] = []
+        for provider_name, provider in third_party_providers.items():
+            url = await provider.authorize(client, params)
+            provider_urls.append(f"{provider_name}_url={quote(url)}")
+
+        return f"/signin?{'&'.join(provider_urls)}"
 
     async def _handle_idp_callback(self, request: Request) -> RedirectResponse:
         txn_id = request.query_params.get("state")
@@ -115,12 +118,13 @@ class MultiOAuthProvider(OAuthProxy):
 
         txn = None
         provider = None
-        if google_transaction := google_auth_provider._oauth_transactions.get(txn_id):
-            txn = google_transaction
-            provider = google_auth_provider
-        elif github_transaction := github_auth_provider._oauth_transactions.get(txn_id):
-            txn = github_transaction
-            provider = github_auth_provider
+
+        # Check all providers for the transaction
+        for _provider in third_party_providers.values():
+            if transaction := _provider._oauth_transactions.get(txn_id):
+                txn = transaction
+                provider = _provider
+                break
 
         if not txn or not provider:
             raise ValueError("Transaction not found")

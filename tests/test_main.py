@@ -13,10 +13,12 @@ from starlette.routing import Route
 from uvicorn import Server
 
 from src import mcp_client
+from src.auth.constants import OAUTH_SCOPES
 from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX
-from src.auth.multi_oauth_provider import GITHUB_AUTH_SCOPES, GOOGLE_AUTH_SCOPES
+from src.auth.multi_oauth_provider import auth_enabled
+from src.auth.third_party_providers import get_provider_scopes
 from src.container.container import Container
-from src.settings import OAUTH_SCOPES, settings
+from src.settings import settings
 
 
 @pytest.mark.asyncio
@@ -24,7 +26,7 @@ async def test_service_startup(server: Server):
     app = cast(FastAPI, server.config.app)
     routes = [cast(Route, route).path for route in app.routes]
     assert_that(routes).contains("/admin/reload", "/mcp", "/mcp-media", "/mcp-books")
-    if settings.auth_enabled:
+    if auth_enabled():
         assert_that(routes).contains(
             "/.well-known/oauth-authorization-server",
             "/.well-known/oauth-protected-resource",
@@ -67,7 +69,7 @@ async def test_account(server: Server):
     oauth_token = OAuthToken(
         access_token=f"{GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}",
         expires_in=1000,
-        scope=" ".join(GITHUB_AUTH_SCOPES + GOOGLE_AUTH_SCOPES),
+        scope=" ".join(get_provider_scopes()),
     )
     callback_url = f"{auth_code.redirect_uri}?code={auth_code.code}&state={oauth_data.state}"
     with (
