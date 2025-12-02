@@ -45,6 +45,10 @@ class ContainerEngineClient:
             env["DOCKER_HOST"] = self.socket
             if self.engine == "podman":
                 env["CONTAINER_HOST"] = self.socket
+
+        if self.engine == "podman":
+            args = ("--remote", *args)
+
         return await run_cli(self.engine, *args, env=env, as_root=as_root, timeout=timeout)
 
     async def list_containers_basic(

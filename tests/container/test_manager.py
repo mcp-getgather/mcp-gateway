@@ -1,4 +1,5 @@
 import asyncio
+import platform
 from collections.abc import AsyncGenerator
 from typing import Callable, Literal, cast, overload
 from unittest.mock import patch
@@ -23,8 +24,8 @@ from src.settings import settings
 
 # checkpoint/restore is only supported by podman
 @pytest.mark.skipif(
-    condition=(settings.CONTAINER_ENGINE != "podman"),
-    reason="Disabled for now until checkpoint/restore is fully verified",
+    condition=(settings.CONTAINER_ENGINE != "podman" and platform.system() != "Darwin"),
+    reason="Checkpoint/restore is only supported by podman on Linux",
 )
 @pytest.mark.asyncio
 async def test_persistent_container_lifecycle(
@@ -154,7 +155,7 @@ async def _assert_container_pools(
     assigned_container_status: Literal["active", "checkpointed", "deleted"] = "active",
 ) -> Container | None:
     async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
-        containers = await client.list_containers(labels=CONTAINER_LABELS, status="running")
+        containers = await client.list_containers(labels=CONTAINER_LABELS, status="all")
 
     unassigned_containers = [c for c in containers if c.name.startswith(UNASSIGNED_USER_ID)]
     assert len(unassigned_containers) == _get_total_num_containers() - (
