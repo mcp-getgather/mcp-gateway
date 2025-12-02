@@ -21,6 +21,11 @@ from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNAS
 from src.settings import settings
 
 
+# checkpoint/restore is only supported by podman
+@pytest.mark.skipif(
+    condition=(settings.CONTAINER_ENGINE != "podman"),
+    reason="Disabled for now until checkpoint/restore is fully verified",
+)
 @pytest.mark.asyncio
 async def test_persistent_container_lifecycle(
     server_factory: Callable[[], AsyncGenerator[Server, None]],
