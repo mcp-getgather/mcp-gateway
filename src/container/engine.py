@@ -200,10 +200,32 @@ class ContainerEngineClient:
         await self.run("container", "restore", id)
 
     async def connect_network(self, network_name: str, id: str):
-        await self.run("network", "connect", network_name, id)
+        try:
+            await self.run("network", "connect", network_name, id)
+        except Exception as e:
+            container = await self.get_container(id=id)
+            if not container.ip:
+                raise e
+            else:
+                logger.warning(
+                    "Error connecting container to network, but container already has an IP address, skipping",
+                    container=container.dump(),
+                    network=network_name,
+                )
 
     async def disconnect_network(self, network_name: str, id: str):
-        await self.run("network", "disconnect", network_name, id)
+        try:
+            await self.run("network", "disconnect", network_name, id)
+        except Exception as e:
+            container = await self.get_container(id=id)
+            if container.ip:
+                raise e
+            else:
+                logger.warning(
+                    "Error disconnecting container from network, but container has no IP address, skipping",
+                    container=container.dump(),
+                    network=network_name,
+                )
 
     async def delete_container(self, id: str):
         await self.delete_containers(id)

@@ -21,7 +21,6 @@ from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNAS
 from src.settings import settings
 
 
-@pytest.mark.skip(reason="Disabled for now until checkpoint/restore is fully verified")
 @pytest.mark.asyncio
 async def test_persistent_container_lifecycle(
     server_factory: Callable[[], AsyncGenerator[Server, None]],
