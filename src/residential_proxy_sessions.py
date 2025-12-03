@@ -101,7 +101,9 @@ def build_proxy_config(
             logger.warning(f"Failed to parse url_template result: {temp_config.masked_url}")
             return None
 
-        result = {"server": temp_config.server, "url": temp_config.url}
+        result: dict[str, str] = {"server": temp_config.server}
+        if temp_config.url:
+            result["url"] = temp_config.url
         if temp_config.username:
             result["username"] = temp_config.username
         if temp_config.password:
