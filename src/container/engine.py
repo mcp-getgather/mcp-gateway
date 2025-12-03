@@ -42,20 +42,26 @@ class ContainerEngineClient:
         return await run_cli(self.engine, *args, env=env, timeout=timeout)
 
     async def list_containers_basic(
-        self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
+        self,
+        *,
+        partial_name: str | None = None,
+        labels: dict[str, str] | None = None,
+        status: Literal["running", "all"] = "all",
     ) -> list[ContainerBasicInfo]:
-        """List all containers, including stopped ones."""
+        args: list[str] = []
+        if status == "all":
+            args.append("--all")
+
         filters: list[str] = []
         if partial_name:
             filters.append(f"name={partial_name}")
         if labels:
             filters.extend([f"label={k}={v}" for k, v in labels.items()])
 
-        args: list[str] = []
         for filter in filters:
             args.extend(["--filter", filter])
 
-        result = await self.run("container", "ls", "--all", *args, "--format", "{{.ID}} {{.Names}}")
+        result = await self.run("container", "ls", *args, "--format", "{{.ID}} {{.Names}}")
         infos: list[ContainerBasicInfo] = []
         for line in result.splitlines():
             id, name = line.split(" ")
@@ -63,9 +69,15 @@ class ContainerEngineClient:
         return infos
 
     async def list_containers(
-        self, *, partial_name: str | None = None, labels: dict[str, str] | None = None
+        self,
+        *,
+        partial_name: str | None = None,
+        labels: dict[str, str] | None = None,
+        status: Literal["running", "all"] = "all",
     ) -> list[Container]:
-        basic_infos = await self.list_containers_basic(partial_name=partial_name, labels=labels)
+        basic_infos = await self.list_containers_basic(
+            partial_name=partial_name, labels=labels, status=status
+        )
         ids = [item.id for item in basic_infos]
         if not ids:
             return []
@@ -80,7 +92,7 @@ class ContainerEngineClient:
                 raise RuntimeError(f"Container id {id} and name {name} mismatch")
             return container
         if name:
-            containers = await self.list_containers(partial_name=name)
+            containers = await self.list_containers(partial_name=name, status="all")
             if len(containers) > 1:
                 raise RuntimeError(f"Multiple containers found for name: {name}")
             if not containers:
@@ -158,7 +170,7 @@ class ContainerEngineClient:
         labels: dict[str, str] | None = None,
         cap_adds: list[str] | None = None,
     ):
-        containers = await self.list_containers(partial_name=name)
+        containers = await self.list_containers(partial_name=name, status="all")
         if len(containers) > 1:
             raise Exception(f"Replace failed: multiple containers found for name: {name}")
 
