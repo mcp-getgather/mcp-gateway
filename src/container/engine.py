@@ -33,13 +33,23 @@ class ContainerEngineClient:
         self.socket = get_container_engine_socket(engine)
         self.startup_seconds = startup_seconds
 
-    async def run(self, *args: str, env: dict[str, str] | None = None, timeout: float = 5) -> str:
+    async def run(
+        self,
+        *args: str,
+        env: dict[str, str] | None = None,
+        as_root: bool = False,
+        timeout: float = 5,
+    ) -> str:
         if platform.system() != "Darwin":
             env = env or {}
             env["DOCKER_HOST"] = self.socket
             if self.engine == "podman":
                 env["CONTAINER_HOST"] = self.socket
-        return await run_cli(self.engine, *args, env=env, timeout=timeout)
+
+        if self.engine == "podman":
+            args = ("--remote", *args)
+
+        return await run_cli(self.engine, *args, env=env, as_root=as_root, timeout=timeout)
 
     async def list_containers_basic(
         self,
@@ -194,16 +204,44 @@ class ContainerEngineClient:
         await self.run("container", "start", id)
 
     async def checkpoint_container(self, id: str):
-        await self.run("container", "checkpoint", id)
+        if self.engine == "podman" and platform.system() != "Darwin":
+            await self.run("container", "checkpoint", id, as_root=True)
+        else:
+            raise RuntimeError("Checkpoint is only supported for podman on Linux")
 
     async def restore_container(self, id: str):
-        await self.run("container", "restore", id)
+        if self.engine == "podman" and platform.system() != "Darwin":
+            await self.run("container", "restore", id, as_root=True)
+        else:
+            raise RuntimeError("Restore is only supported for podman on Linux")
 
     async def connect_network(self, network_name: str, id: str):
-        await self.run("network", "connect", network_name, id)
+        try:
+            await self.run("network", "connect", network_name, id)
+        except Exception as e:
+            container = await self.get_container(id=id)
+            if not container.ip:
+                raise e
+            else:
+                logger.warning(
+                    "Error connecting container to network, but container already has an IP address, skipping",
+                    container=container.dump(),
+                    network=network_name,
+                )
 
     async def disconnect_network(self, network_name: str, id: str):
-        await self.run("network", "disconnect", network_name, id)
+        try:
+            await self.run("network", "disconnect", network_name, id)
+        except Exception as e:
+            container = await self.get_container(id=id)
+            if container.ip:
+                raise e
+            else:
+                logger.warning(
+                    "Error disconnecting container from network, but container has no IP address, skipping",
+                    container=container.dump(),
+                    network=network_name,
+                )
 
     async def delete_container(self, id: str):
         await self.delete_containers(id)
@@ -326,6 +364,7 @@ async def run_cli(
     cmd: str,
     *args: str,
     env: dict[str, str] | None = None,
+    as_root: bool = False,
     timeout: float = 5,
     on_error: CLIOnError | None = None,
 ) -> str:
@@ -334,8 +373,9 @@ async def run_cli(
     Use timeout to limit the command execution time.
     Use on_error to handle errors.
     """
+    cmds = ["sudo", cmd] if as_root else [cmd]
     process = await asyncio.create_subprocess_exec(
-        cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        *cmds, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
 
     cmd_str = f"{cmd} {' '.join(args)}"

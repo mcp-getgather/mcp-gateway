@@ -29,7 +29,7 @@ RUN uv sync --frozen --no-dev
 FROM mirror.gcr.io/library/python:3.13-slim-trixie
 
 RUN apt-get update && \
-    apt-get install -y podman && \
+    apt-get install -y podman sudo && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

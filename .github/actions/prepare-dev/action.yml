@@ -23,10 +23,66 @@ runs:
       if: ${{ env.CONTAINER_ENGINE == 'podman' }}
       shell: bash
       run: |
-        if ! command -v podman &> /dev/null; then
-          sudo apt update
-          sudo apt -y install podman
-        fi
+        # Install criu and podman 5.4 from plucky for checkpoint/restore
+        sudo apt update
+        sudo apt install -y software-properties-common
+        sudo add-apt-repository -y ppa:criu/ppa
+        sudo apt update
+        sudo apt install -y criu
+
+        # Install latest Podman, crun, aardvark-dns, and netavark from plucky
+        sudo tee /etc/apt/sources.list.d/ubuntu-plucky.sources >/dev/null <<EOF
+        # --- amd64: main + updates from archive.ubuntu.com ---
+        Types: deb
+        URIs: http://archive.ubuntu.com/ubuntu
+        Suites: plucky plucky-updates
+        Components: main universe
+        Architectures: amd64
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+        # --- amd64: security from security.ubuntu.com ---
+        Types: deb
+        URIs: http://security.ubuntu.com/ubuntu
+        Suites: plucky-security
+        Components: main universe
+        Architectures: amd64
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+        # --- arm64: main + updates from ports.ubuntu.com ---
+        Types: deb
+        URIs: http://ports.ubuntu.com/ubuntu-ports
+        Suites: plucky plucky-updates
+        Components: main universe
+        Architectures: arm64
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+        # --- arm64: security from ports.ubuntu.com ---
+        Types: deb
+        URIs: http://ports.ubuntu.com/ubuntu-ports
+        Suites: plucky-security
+        Components: main universe
+        Architectures: arm64
+        Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+        EOF
+
+        # Keep Noble as the default to avoid drifting across releases
+        echo 'APT::Default-Release "noble";' | sudo tee /etc/apt/apt.conf.d/99defaultrelease >/dev/null
+
+        # Pin only Podman & its deps from plucky (same file you already added is fine;
+        # re-create here just in case)
+        sudo tee /etc/apt/preferences.d/plucky-podman >/dev/null <<EOF
+        Package: *
+        Pin: release n=plucky*
+        Pin-Priority: 100
+
+        Package: /^(podman(|-remote)|conmon|crun|runc|netavark|aardvark-dns|slirp4netns|containers-(common|storage)|golang-github-containers-common|catatonit|uidmap|passt|iptables|buildah|skopeo|libgpgme11t64|libseccomp2|libsqlite3-0|libsubid5|libgpg-error0|libip4tc2|libip6tc2|libxtables12)$/
+        Pin: release n=plucky*
+        Pin-Priority: 1001
+        EOF
+
+        sudo apt update
+        # Don't install recommended packages to avoid conflicts with CRIU
+        sudo apt install -y --no-install-recommends podman crun aardvark-dns netavark
 
         podman --version
 
