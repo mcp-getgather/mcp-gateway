@@ -16,35 +16,46 @@ class ProxyConfig(BaseModel):
     url: str | None = None
     url_template: str | None = None
     username_template: str | None = None
-    base_username: str | None = None
+    username: str | None = None
     password: str | None = None
+    server: str | None = None
+    masked_url: str | None = None
 
-    @property
-    def server(self) -> str | None:
-        """Extract server (host:port) from URL."""
-        if not self.url:
-            return None
+    def model_post_init(self, __context: Any) -> None:
+        # either simple url or instantiated url_template
+        logger.info("HELO")
+        if self.url:
+            self._parse_url(self.url)
 
-        url_with_scheme = self.url if "://" in self.url else f"http://{self.url}"
-        parsed = urlparse(url_with_scheme)
+    def _parse_url(self, url: str) -> None:
+        """Parse URL to extract base username, password, and server.
 
-        # Handle URLs with credentials like http://user:pass@host:port
+        Args:
+            url: Full URL with credentials (e.g., 'user:pass@host:port' or 'http://user:pass@host:port')
+        """
+        # Add scheme if not present to help urlparse
+        url_to_parse = url
+        if "://" not in url:
+            url_to_parse = f"http://{url}"
+
+        # Create masked version for logging (mask credentials once)
+        self.masked_url = re.sub(r"://[^@]+@", "://***@", url_to_parse)
+
+        parsed = urlparse(url_to_parse)
+        print("@@@ Parsed proxy URL:", parsed)
+        if parsed.username:
+            self.username = parsed.username
+        if parsed.password:
+            self.password = parsed.password
+
+        # Reconstruct server URL without credentials
         if parsed.hostname:
+            scheme = parsed.scheme or "http"
             port = f":{parsed.port}" if parsed.port else ""
-            return f"{parsed.hostname}{port}"
-
-        return None
-
-    @property
-    def masked_url(self) -> str:
-        """Return URL with password masked for logging."""
-        if not self.url:
-            return ""
-
-        if self.password and self.password in self.url:
-            return self.url.replace(self.password, "***")
-
-        return self.url
+            self.server = f"{scheme}://{parsed.hostname}{port}"
+        else:
+            logger.warning(f"Could not parse hostname from URL: {self.masked_url}")
+            self.server = url
 
     def dump(self):
         """Serialize for logging."""
@@ -79,6 +90,7 @@ def build_proxy_config(
     # Format 1: url_template (full URL with credentials and dynamic params)
     if proxy_config.url_template:
         full_url = _build_params(proxy_config.url_template, values)
+        logger.debug(f"Built full proxy URL from url_template: {full_url}")
         if not full_url:
             logger.warning("url_template resulted in empty string, skipping proxy")
             return None
@@ -89,18 +101,16 @@ def build_proxy_config(
             logger.warning(f"Failed to parse url_template result: {temp_config.masked_url}")
             return None
 
-        result = {
-            "server": temp_config.server,
-        }
-        if temp_config.base_username:
-            result["username"] = temp_config.base_username
+        result = {"server": temp_config.server, "url": temp_config.url}
+        if temp_config.username:
+            result["username"] = temp_config.username
         if temp_config.password:
             result["password"] = temp_config.password
 
         logger.info(
             "Built proxy config from url_template - "
             f"server: {temp_config.server}, "
-            f"username: {temp_config.base_username}, "
+            f"username: {temp_config.username}, "
             f"has_password: {bool(temp_config.password)}"
         )
         return result
@@ -113,15 +123,15 @@ def build_proxy_config(
     # Build username from base + template
     username = None
 
-    # Priority: username_template > base_username
+    # Priority: username_template > username
     if proxy_config.username_template:
-        # Build from template (may not need base_username)
+        # Build from template (may not need username)
         params = _build_params(proxy_config.username_template, values)
         if params:
             username = params
-    elif proxy_config.base_username:
+    elif proxy_config.username:
         # Use base username if no template
-        username = proxy_config.base_username
+        username = proxy_config.username
 
     if username:
         logger.info(f"Built proxy username: {username}")
@@ -254,7 +264,7 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
                 url=proxy_data.get("url"),  # type: ignore[arg-type]
                 url_template=proxy_data.get("url_template"),  # type: ignore[arg-type]
                 username_template=proxy_data.get("username_template"),  # type: ignore[arg-type]
-                base_username=proxy_data.get("base_username"),  # type: ignore[arg-type]
+                username=proxy_data.get("username"),  # type: ignore[arg-type]
                 password=proxy_data.get("password"),  # type: ignore[arg-type]
             )
 
@@ -351,11 +361,14 @@ def select_and_build_proxy_config(
 
     # Return as single proxy named "proxy-0"
     result = {
-        "proxy-0": {
-            "type": selected_proxy_config.proxy_type,
-            "server": resolved_proxy["server"],
-            "username": resolved_proxy.get("username", ""),
-            "password": resolved_proxy.get("password", ""),
+        "proxies": {
+            "proxy-0": {
+                "type": selected_proxy_config.proxy_type,
+                "server": resolved_proxy["server"],
+                "base_username": resolved_proxy.get("username", ""),
+                "password": resolved_proxy.get("password", ""),
+                "url": resolved_proxy["url"],  # for compatibility
+            }
         }
     }
 
