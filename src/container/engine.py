@@ -121,6 +121,9 @@ class ContainerEngineClient:
         args.extend(["--name", name])
         args.extend(["--hostname", hostname])
         args.extend(["--user", user])
+        # Add DNS servers for external name resolution
+        args.extend(["--dns", "8.8.8.8"])
+        args.extend(["--dns", "1.1.1.1"])
         if envs:
             for key, value in envs.items():
                 args.extend(["--env", f"{key}={value}"])
@@ -140,7 +143,8 @@ class ContainerEngineClient:
         if cmd:
             args.extend(cmd)
 
-        id = await self.run(*args)
+        # Use longer timeout for container creation (especially on Docker Desktop for macOS)
+        id = await self.run(*args, timeout=30)
         info = await self.inspect_container(id)
         return Container.from_inspect(info, network_name=self.network)
 
@@ -322,9 +326,20 @@ async def run_cli(
     Use timeout to limit the command execution time.
     Use on_error to handle errors.
     """
-    process = await asyncio.create_subprocess_exec(
-        cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
+    # Detect detached docker/podman run commands which can hang with stderr=PIPE
+    # See: https://github.com/python/cpython/issues/87744
+    is_detached_run = len(args) >= 2 and args[0] == "run" and "-d" in args[:5]
+
+    if is_detached_run:
+        # For detached runs, redirect stderr to devnull to prevent pipe deadlock
+        process = await asyncio.create_subprocess_exec(
+            cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
+    else:
+        # For other commands, capture stderr for error reporting
+        process = await asyncio.create_subprocess_exec(
+            cmd, *args, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
 
     cmd_str = f"{cmd} {' '.join(args)}"
     cmd_msg = f"Command: {cmd_str}"
@@ -338,13 +353,16 @@ async def run_cli(
         await process.wait()
         raise Exception(f"CLI timed out after {timeout} seconds\n{cmd_msg}")
 
-    returncode, error = process.returncode, stderr.decode().strip()
+    returncode = process.returncode
+    error = stderr.decode().strip() if stderr else ""
+
     if on_error:
         returncode, error = on_error(returncode, error)
 
     logger.debug("Executed CLI command", return_code=returncode, command=cmd_str, env=env)
 
     if returncode != 0:
-        raise Exception(f"CLI failed: {error}\n{cmd_msg}")
+        error_msg = f": {error}" if error else f" (returncode: {returncode})"
+        raise Exception(f"CLI failed{error_msg}\n{cmd_msg}")
 
     return stdout.decode().strip()
