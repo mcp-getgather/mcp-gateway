@@ -1,4 +1,5 @@
 import json
+import os
 from contextvars import ContextVar
 from time import sleep
 from typing import Any, NamedTuple
@@ -16,6 +17,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from src.auth.auth import get_auth_user
+from src.container.container import Container
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.logs import log_decorator
@@ -49,15 +51,24 @@ async def _write_proxy_config_to_container(
     proxy_config: dict[str, Any] | None,
 ) -> None:
     """Write proxy configuration to container's mount directory as proxies.yaml."""
-    from src.container.container import Container
 
     mount_dir = Container.mount_dir_for_hostname(container_hostname)
     proxies_file = mount_dir / "proxies.yaml"
+    logger.debug(
+        f"Writing proxy config to container mount",
+        hostname=container_hostname,
+        file=str(proxies_file),
+        proxy_config=proxy_config,
+    )
 
     if proxy_config:
         yaml_content = yaml.dump(proxy_config)
         async with aiofiles.open(proxies_file, "w") as f:
             await f.write(yaml_content)
+
+        # Set file permissions to be readable by container (0o644 = rw-r--r--)
+        os.chmod(proxies_file, 0o644)
+
         logger.info(
             f"Wrote proxy config to container mount",
             hostname=container_hostname,
@@ -132,7 +143,9 @@ def _create_client_factory(path: str):
                     headers_for_logging[header_name] = header_value
 
         # Select and build proxy configuration
+        print("@@@ Current Settings.PROXIES_CONFIG:", settings.PROXIES_CONFIG)
         if settings.PROXIES_CONFIG:
+            print("@@@ Selected proxy config:")
             proxy_config = select_and_build_proxy_config(
                 toml_config=settings.PROXIES_CONFIG,
                 proxy_name=proxy_name,
