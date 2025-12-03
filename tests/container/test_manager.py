@@ -22,9 +22,8 @@ from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNAS
 from src.settings import settings
 
 
-# checkpoint/restore is only supported by podman
 @pytest.mark.skipif(
-    condition=(settings.CONTAINER_ENGINE != "podman" and platform.system() != "Darwin"),
+    condition=(settings.CONTAINER_ENGINE != "podman" or platform.system() == "Darwin"),
     reason="Checkpoint/restore is only supported by podman on Linux",
 )
 @pytest.mark.asyncio
