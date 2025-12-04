@@ -137,11 +137,11 @@ async def _init_container_engine():
     """
     await ContainerService.pull_container_image()
 
-    cmd = f"DOCKER_HOST={get_container_engine_socket(settings.CONTAINER_ENGINE)} docker compose"
+    cmd = "docker compose"
     if ENV_FILE:
         cmd += f" --env-file {ENV_FILE}"
     cmd += " up -d"
-    await run_cli("sh", "-c", cmd, timeout=10)
+    await run_cli("sh", "-c", cmd, env=_get_compose_env(), timeout=10)
 
 
 async def _cleanup_container_engine(
@@ -169,13 +169,22 @@ async def _cleanup_container_engine(
             )
 
     if scope == "session":
-        cmd = f"DOCKER_HOST={get_container_engine_socket(settings.CONTAINER_ENGINE)} docker compose"
+        cmd = "docker compose"
         if ENV_FILE:
             cmd += f" --env-file {ENV_FILE}"
         cmd += " down"
-        await run_cli("sh", "-c", cmd, timeout=20)
+        await run_cli("sh", "-c", cmd, env=_get_compose_env(), timeout=20)
 
         try:
             await client.delete_image(CONTAINER_IMAGE_NAME)
         except:
             pass  # ignore image not found error
+
+
+def _get_compose_env():
+    return {
+        "CONTAINER_PROJECT_NAME": settings.CONTAINER_PROJECT_NAME,
+        "TS_AUTHKEY": "",
+        "CONTAINER_SUBNET_PREFIX": settings.CONTAINER_SUBNET_PREFIX,
+        "DOCKER_HOST": get_container_engine_socket(settings.CONTAINER_ENGINE),
+    }

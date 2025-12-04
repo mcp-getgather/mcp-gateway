@@ -32,7 +32,7 @@ jobs:
           CONTAINER_PROJECT_NAME: getgather-ci
           CONTAINER_SUBNET_PREFIX: 172.24.1
           GETGATHER_APPS: '{"test-app-key":"test-app-name"}'
-          HOST_DATA_DIR: ./data
+          DATA_DIR: ./data
           CONTAINER_ENGINE: ${{ matrix.container-engine }}
           OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
           OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}

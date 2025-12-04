@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     LOGFIRE_TOKEN: str = ""
     SEGMENT_WRITE_KEY: str = ""
 
-    HOST_DATA_DIR: str = ""
+    DATA_DIR: str = ""
 
     ADMIN_API_TOKEN: str = ""
     GATEWAY_ORIGIN: str = ""
@@ -48,14 +48,14 @@ class Settings(BaseSettings):
 
     CONTAINER_SENTRY_DSN: str = ""
 
-    NUM_STANDBY_CONTAINERS: int = 5
+    MAX_NUM_RUNNING_CONTAINERS: int = 5
 
     # for testing only
     TEST_GITHUB_OAUTH_TOKEN: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):
-        required = ["HOST_DATA_DIR", "GATEWAY_ORIGIN", "CONTAINER_PROJECT_NAME"]
+        required = ["DATA_DIR", "GATEWAY_ORIGIN", "CONTAINER_PROJECT_NAME"]
         for name in required:
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
@@ -63,7 +63,7 @@ class Settings(BaseSettings):
 
     @property
     def container_mount_parent_dir(self) -> Path:
-        path = Path(self.HOST_DATA_DIR).expanduser() / "container_mounts"
+        path = Path(self.DATA_DIR).expanduser() / "container_mounts"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
     @property
     def logs_dir(self) -> Path:
-        path = Path(self.HOST_DATA_DIR).expanduser() / "logs"
+        path = Path(self.DATA_DIR).expanduser() / "logs"
         if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
         return path

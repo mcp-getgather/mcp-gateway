@@ -59,14 +59,12 @@ class ContainerIdentity(BaseModel):
         return f"{self.user_id}-{self.hostname}"
 
     @property
-    def is_assigned_to_authenticated_user(self) -> bool:
-        """Return True if the container is assigned to a non-getgather user."""
+    def is_persistent(self) -> bool:
+        """
+        Return True if the container needs to be persisted after usage.
+        For now, it is assigned to a non-getgather user.
+        """
         return bool(self.user and self.user.auth_provider != "getgather")
-
-    @property
-    def is_assigned_to_getgather_app(self) -> bool:
-        """Return True if the container is assigned to the one of the getgather apps."""
-        return bool(self.user and self.user.auth_provider == "getgather")
 
     @classmethod
     async def from_hostname(cls, hostname: str) -> "ContainerIdentity":
@@ -108,12 +106,10 @@ class ContainerService:
         and [USER_ID]-[HOSTNAME] for assigned containers, where assigned USER_ID is AuthUser.user_id.
     - Containers can be searched by USER_ID or HOSTNAME since they are unique and substrings of CONTAINER_NAME.
     - Container IP address is used to route requests to the container.
-
-    === Lifecyle and Routing ===
-    - The pool maintains a list of settings.MIN_CONTAINER_POOL_SIZE unassigned containers.
-    - When a new user connects, the manager will assign a container from the pool to the user, and backfill the pool.
-      Assignment updates the container name from UNASSIGNED-[HOSTNAME] to [USER_ID]-[HOSTNAME].
-    - Containers can also be reloaded on demand, in order to update the container image.
+    - Container status:
+      - ready: the container is running, service has started and is ready to accept requests
+      - running: the container is running, can be found in `docker/podman ps`
+      - all: all containers, including stopped ones, can be found in `docker/podman ps -a`
     """
 
     @classmethod
@@ -127,11 +123,12 @@ class ContainerService:
     async def get_container_name(
         cls, partial_name: str, *, client: ContainerEngineClient | None = None
     ) -> str | None:
+        """Get the full name of the container for a given partial name."""
         async with engine_client(
             client=client, network=CONTAINER_NETWORK_NAME, lock="read"
         ) as _client:
             containers = await _client.list_containers_basic(
-                partial_name=partial_name, labels=CONTAINER_LABELS
+                partial_name=partial_name, labels=CONTAINER_LABELS, status="all"
             )
             if len(containers) > 1:
                 raise RuntimeError(f"Found multiple containers found for {partial_name}")
@@ -143,15 +140,17 @@ class ContainerService:
         *,
         partial_name: str | None = None,
         client: ContainerEngineClient | None = None,
-        only_ready: bool = True,
+        status: Literal["running", "ready", "all"] = "ready",
     ) -> list[Container]:
         async with engine_client(
             client=client, network=CONTAINER_NETWORK_NAME, lock="read"
         ) as _client:
             containers = await _client.list_containers(
-                partial_name=partial_name, labels=CONTAINER_LABELS
+                partial_name=partial_name,
+                labels=CONTAINER_LABELS,
+                status="all" if status == "all" else "running",
             )
-        if only_ready:
+        if status == "ready":
             containers = [c for c in containers if await cls._is_container_ready(c)]
         return containers
 
@@ -160,7 +159,7 @@ class ContainerService:
         cls, partial_name: str, *, client: ContainerEngineClient | None = None
     ) -> Container | None:
         containers = await cls.get_containers(
-            partial_name=partial_name, client=client, only_ready=False
+            partial_name=partial_name, client=client, status="all"
         )
         if len(containers) > 1:
             raise ValueError(
@@ -170,7 +169,9 @@ class ContainerService:
 
     @classmethod
     async def get_random_unassigned_container(cls, client: ContainerEngineClient | None = None):
-        containers = await cls.get_containers(partial_name=UNASSIGNED_USER_ID, client=client)
+        containers = await cls.get_containers(
+            partial_name=UNASSIGNED_USER_ID, client=client, status="ready"
+        )
         if not containers:
             raise RuntimeError("No unassigned containers found")
         container = random.choice(containers)
