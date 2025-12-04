@@ -79,7 +79,8 @@ def _setup_logger(level: str, logs_dir: Path | None = None, verbose: bool = Fals
 
         if record["extra"]:
             extra = yaml.dump(record["extra"], sort_keys=False, default_flow_style=False)
-            message = f"{message}\n{extra.rstrip()}"
+            extra_escaped = extra.rstrip().replace("{", "{{").replace("}", "}}")
+            message = f"{message}\n{extra_escaped}"
 
         return message
 
