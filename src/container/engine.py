@@ -143,6 +143,7 @@ class ContainerEngineClient:
         args.extend(["--name", name])
         args.extend(["--hostname", hostname])
         args.extend(["--user", user])
+
         if envs:
             for key, value in envs.items():
                 args.extend(["--env", f"{key}={value}"])
@@ -390,13 +391,16 @@ async def run_cli(
         await process.wait()
         raise Exception(f"CLI timed out after {timeout} seconds\n{cmd_msg}")
 
-    returncode, error = process.returncode, stderr.decode().strip()
+    returncode = process.returncode
+    error = stderr.decode().strip() if stderr else ""
+
     if on_error:
         returncode, error = on_error(returncode, error)
 
     logger.debug("Executed CLI command", return_code=returncode, command=cmd_str, env=env)
 
     if returncode != 0:
-        raise Exception(f"CLI failed: {error}\n{cmd_msg}")
+        error_msg = f": {error}" if error else f" (returncode: {returncode})"
+        raise Exception(f"CLI failed{error_msg}\n{cmd_msg}")
 
     return stdout.decode().strip()

@@ -15,7 +15,7 @@ from src.auth.auth import AuthUser
 from src.container.container import Container
 from src.container.engine import ContainerEngineClient, engine_client
 from src.logs import log_decorator
-from src.settings import PROJECT_DIR, settings
+from src.settings import settings
 
 logger = logger.bind(topic="service")
 
@@ -288,13 +288,9 @@ class ContainerService:
         src_data_dir = str(Container.mount_dir_for_hostname(hostname).resolve())
         dst_data_dir = "/app/data"
 
-        # Mount proxies.yaml from host to container if it exists
-        volumes = [f"{src_data_dir}:{dst_data_dir}:rw"]
-        proxies_file_path = PROJECT_DIR / "proxies.yaml"
-        if proxies_file_path.exists():
-            src_proxies_file = str(proxies_file_path.resolve())
-            dst_proxies_file = "/app/proxies.yaml"
-            volumes.append(f"{src_proxies_file}:{dst_proxies_file}:ro")
+        # Proxy configuration is now written dynamically to proxies.yaml in the mount
+        # directory based on request headers (x-location-info and x-proxy-type).
+        # The gateway selects the appropriate proxy and writes it as "proxy-0".
 
         env = {
             "ENVIRONMENT": settings.GATEWAY_ORIGIN,
@@ -302,14 +298,11 @@ class ContainerService:
             "LOG_LEVEL": settings.LOG_LEVEL,
             "HOSTNAME": hostname,
             "BROWSER_TIMEOUT": settings.BROWSER_TIMEOUT,
-            "DEFAULT_PROXY_TYPE": settings.DEFAULT_PROXY_TYPE,
+            "DEFAULT_PROXY_TYPE": "proxy-0",
             "SENTRY_DSN": settings.CONTAINER_SENTRY_DSN,
             "DATA_DIR": dst_data_dir,
             "PORT": "80",
         }
-
-        if not proxies_file_path.exists() and settings.PROXIES_CONFIG:
-            env["PROXIES_CONFIG"] = settings.PROXIES_CONFIG
 
         cap_adds = ["NET_BIND_SERVICE"]
         entrypoint = None
@@ -333,7 +326,7 @@ class ContainerService:
             image=CONTAINER_IMAGE_NAME,
             entrypoint=entrypoint,
             envs=env,
-            volumes=volumes,
+            volumes=[f"{src_data_dir}:{dst_data_dir}:rw"],
             labels=CONTAINER_LABELS,
             cap_adds=cap_adds,
             cmd=cmd,
