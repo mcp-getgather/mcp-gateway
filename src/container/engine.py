@@ -143,9 +143,7 @@ class ContainerEngineClient:
         args.extend(["--name", name])
         args.extend(["--hostname", hostname])
         args.extend(["--user", user])
-        # Add DNS servers for external name resolution
-        args.extend(["--dns", "8.8.8.8"])
-        args.extend(["--dns", "1.1.1.1"])
+
         if envs:
             for key, value in envs.items():
                 args.extend(["--env", f"{key}={value}"])
@@ -165,8 +163,7 @@ class ContainerEngineClient:
         if cmd:
             args.extend(cmd)
 
-        # Use longer timeout for container creation (especially on Docker Desktop for macOS)
-        id = await self.run(*args, timeout=30)
+        id = await self.run(*args)
         info = await self.inspect_container(id)
         return Container.from_inspect(info, network_name=self.network)
 
