@@ -21,7 +21,11 @@ from src.container.container import Container
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.logs import log_decorator
-from src.residential_proxy_sessions import select_and_build_proxy_config
+from src.residential_proxy_sessions import (
+    GetgatherProxies,
+    Location,
+    select_and_build_proxy_config,
+)
 from src.settings import settings
 
 incoming_headers_context: ContextVar[dict[str, str]] = ContextVar("incoming_headers", default={})
@@ -48,7 +52,7 @@ class SegmentMiddleware(Middleware):
 
 async def _write_proxy_config_to_container(
     container_hostname: str,
-    proxy_config: dict[str, Any] | None,
+    proxy_config: GetgatherProxies | None,
 ) -> None:
     """Write proxy configuration to container's mount directory as proxies.yaml."""
 
@@ -58,11 +62,12 @@ async def _write_proxy_config_to_container(
         f"Writing proxy config to container mount",
         hostname=container_hostname,
         file=str(proxies_file),
-        proxy_config=proxy_config,
+        proxy_config=proxy_config.dump() if proxy_config else None,
     )
 
     if proxy_config:
-        yaml_content = yaml.dump(proxy_config)
+        # Convert GetgatherProxies model to dict for YAML serialization
+        yaml_content = yaml.dump(proxy_config.dump())
         async with aiofiles.open(proxies_file, "w") as f:
             await f.write(yaml_content)
 
@@ -109,7 +114,7 @@ def _create_client_factory(path: str):
 
         # Extract location and proxy type from headers
         location_data = None
-        proxy_name = None
+        proxy_number = None
 
         # Forward all custom x- headers to the container (e.g., x-location, x-signin-id, x-incognito)
         for header_name, header_value in incoming_headers.items():
@@ -127,8 +132,8 @@ def _create_client_factory(path: str):
                         headers_for_logging[header_name] = header_value
                 # Extract x-proxy-type for proxy selection
                 elif header_name.lower() == "x-proxy-type":
-                    proxy_name = header_value
-                    logger.debug("Intercepted x-proxy-type", proxy_name=proxy_name)
+                    proxy_number = header_value
+                    logger.debug("Intercepted x-proxy-type", proxy_number=proxy_number)
                     headers_for_logging[header_name] = header_value
                 # Keep backward compatibility with x-location
                 elif header_name.lower() == "x-location":
@@ -143,15 +148,15 @@ def _create_client_factory(path: str):
                     headers_for_logging[header_name] = header_value
 
         # Select and build proxy configuration
-        print("@@@ Current Settings.PROXIES_CONFIG:", settings.PROXIES_CONFIG)
         if settings.PROXIES_CONFIG:
-            print("@@@ Selected proxy config:")
+            # Convert location_data dict to Location model
+            location = Location(**location_data) if location_data else None
             proxy_config = select_and_build_proxy_config(
                 toml_config=settings.PROXIES_CONFIG,
-                proxy_name=proxy_name,
-                default_proxy_name=settings.DEFAULT_PROXY_TYPE,
+                proxy_number=proxy_number,
+                default_proxy_number=settings.DEFAULT_PROXY_TYPE,
                 profile_id=container.hostname,
-                location=location_data,
+                location=location,
             )
             # Write selected proxy config to container mount
             await _write_proxy_config_to_container(container.hostname, proxy_config)
