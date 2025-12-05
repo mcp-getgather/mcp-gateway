@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import traceback
 from typing import TypedDict
 
 from fastmcp import Client
@@ -16,12 +17,21 @@ configs: dict[str, TestConfig] = {
 
 async def call_tool(base_url: str, config: TestConfig):
     url = f"{base_url}{config['mcp']}"
-    async with Client(url, auth="oauth") as client:
-        result = await client.call_tool_mcp(config["tool"], {})
+    result = None
+    error = None
+    try:
+        async with Client(url, auth="oauth") as client:
+            result = await client.call_tool_mcp(config["tool"], {})
+    except Exception:
+        error = traceback.format_exc()
 
     print(f"Tool call:\n  mcp server: {url}\n  tool: {config['tool']}")
-    print("Result:")
-    print(result)
+    if error:
+        print("Error:")
+        print(error)
+    else:
+        print("Result:")
+        print(result)
 
 
 if __name__ == "__main__":
