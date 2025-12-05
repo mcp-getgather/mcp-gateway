@@ -108,3 +108,9 @@ npm install
 ```bash
 npm run dev
 ```
+
+## Testing
+
+To run unit tests, create a `.env.test` file and run `pytest`.
+
+You can also run manual tests by running `python tests/testing.py`.
