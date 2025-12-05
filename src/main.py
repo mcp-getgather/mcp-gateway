@@ -13,13 +13,10 @@ from loguru import logger
 from src.auth.auth import setup_mcp_auth
 from src.container.manager import ContainerManager
 from src.container.service import ContainerService
-from src.logs import setup_logging
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
 from src.proxies.mcp import get_mcp_apps, incoming_headers_context
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
-
-setup_logging()
 
 
 @asynccontextmanager
