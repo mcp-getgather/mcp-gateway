@@ -226,6 +226,9 @@ class ContainerService:
         async with engine_client(
             client=client, network=CONTAINER_NETWORK_NAME, lock="write"
         ) as _client:
+            if not _client.is_checkpoint_restore_supported:
+                return
+
             await _client.disconnect_network(CONTAINER_NETWORK_NAME, container.id)
             await _client.checkpoint_container(container.id)
 
@@ -243,6 +246,9 @@ class ContainerService:
         async with engine_client(
             client=client, network=CONTAINER_NETWORK_NAME, lock="write"
         ) as _client:
+            if not _client.is_checkpoint_restore_supported:
+                return
+
             await _client.restore_container(container.id)
             await _client.connect_network(CONTAINER_NETWORK_NAME, container.id)
 
