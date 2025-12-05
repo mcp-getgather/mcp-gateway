@@ -33,7 +33,7 @@ if __name__ == "__main__":
             test = sys.argv[1]
             url = sys.argv[2]
         case _:
-            print("Usage: python main.py <test_name> [<url>]")
+            print("Usage: python tests/testing.py <test_name> [<url>]")
             print(f"  possible test names: {', '.join(configs.keys())}")
             sys.exit(1)
 
