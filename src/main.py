@@ -108,6 +108,15 @@ async def create_server():
     for route, mcp_app in app.state.mcp_apps.items():
         app.mount(route, mcp_app)
 
+    @app.middleware("http")
+    async def forward_https(  # type: ignore[reportUnusedFunction]
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ):
+        if request.headers.get("x-forwarded-proto") == "https":
+            request.scope["scheme"] = "https"
+        response = await call_next(request)
+        return response
+
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
