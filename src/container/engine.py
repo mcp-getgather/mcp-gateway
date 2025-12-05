@@ -204,14 +204,25 @@ class ContainerEngineClient:
     async def start_container(self, id: str):
         await self.run("container", "start", id)
 
+    @property
+    def is_checkpoint_restore_supported(self) -> bool:
+        supported = self.engine == "podman" and platform.system() != "Darwin"
+        if not supported:
+            logger.warning(
+                "Checkpoint/restore is only supported for podman on Linux",
+                engine=self.engine,
+                system=platform.system(),
+            )
+        return supported
+
     async def checkpoint_container(self, id: str):
-        if self.engine == "podman" and platform.system() != "Darwin":
+        if self.is_checkpoint_restore_supported:
             await self.run("container", "checkpoint", id, as_root=True)
         else:
             raise RuntimeError("Checkpoint is only supported for podman on Linux")
 
     async def restore_container(self, id: str):
-        if self.engine == "podman" and platform.system() != "Darwin":
+        if self.is_checkpoint_restore_supported:
             await self.run("container", "restore", id, as_root=True)
         else:
             raise RuntimeError("Restore is only supported for podman on Linux")
