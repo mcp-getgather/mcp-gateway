@@ -35,7 +35,7 @@ Docker compose is used to set up subnet and tailscale router. It should be insta
 
 ## Run locally
 
-1. Create an `.env` file from `env.template`
+1. Create an `.env` file from `env.template`. If using a proxy service follow the format outlined in the env.template which uses toml for the proxy configuration.
 
 ```
 CONTAINER_ENGINE=docker # or podman
