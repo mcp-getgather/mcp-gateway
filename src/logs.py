@@ -25,6 +25,19 @@ LOGGER_NAME = Path(__file__).parent.name  # Assume the parent directory name is 
 
 
 def setup_logging():
+    # setup logfire
+    if settings.LOGFIRE_TOKEN:
+        logfire.configure(
+            service_name="mcp-gateway",
+            send_to_logfire="if-token-present",
+            token=settings.LOGFIRE_TOKEN,
+            environment=settings.ENVIRONMENT,
+            code_source=logfire.CodeSource(
+                repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
+            ),
+            console=False,
+        )
+
     _setup_logger(settings.LOG_LEVEL, settings.logs_dir, settings.VERBOSE)
 
     # setup sentry
@@ -52,18 +65,6 @@ def setup_logging():
         analytics.write_key = "disabled"
         analytics.debug = False
         analytics.send = False
-
-    # setup logfire
-    if settings.LOGFIRE_TOKEN:
-        logfire.configure(
-            service_name="mcp-gateway",
-            send_to_logfire="if-token-present",
-            token=settings.LOGFIRE_TOKEN,
-            environment=settings.ENVIRONMENT,
-            code_source=logfire.CodeSource(
-                repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
-            ),
-        )
 
 
 LOG_FILE_TOPICS = frozenset(["manager", "service"])
@@ -131,7 +132,15 @@ def _setup_logger(level: str, logs_dir: Path | None = None, verbose: bool = Fals
     logger.configure(handlers=handlers)
 
     # Override the loggers of external libraries to ensure consistent formatting
-    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastmcp"):
+    for logger_name in (
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "fastmcp",
+        "fastmcp.fastmcp.server.auth.oauth_proxy",
+        "fastmcp.fastmcp.server.auth.providers.github",
+        "fastmcp.fastmcp.server.auth.providers.google",
+    ):
         lib_logger = logging.getLogger(logger_name)
         lib_logger.handlers.clear()  # Remove existing handlers
         lib_logger.addHandler(rich_handler)
