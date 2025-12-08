@@ -13,8 +13,7 @@ from starlette.routing import Route
 from uvicorn import Server
 
 from src import mcp_client
-from src.auth.constants import OAUTH_SCOPES
-from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX
+from src.auth.constants import GETGATHER_OAUTH_PROVIDER_NAME, OAUTH_SCOPES
 from src.auth.multi_oauth_provider import auth_enabled
 from src.auth.third_party_providers import get_provider_scopes
 from src.container.container import Container
@@ -67,7 +66,7 @@ async def test_account(server: Server):
         resource=settings.GATEWAY_ORIGIN,
     )
     oauth_token = OAuthToken(
-        access_token=f"{GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}",
+        access_token=f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}",
         expires_in=1000,
         scope=" ".join(get_provider_scopes()),
     )

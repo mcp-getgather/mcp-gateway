@@ -4,10 +4,12 @@ from fastmcp.server.auth import TokenVerifier
 from fastmcp.server.auth.auth import AccessToken
 from loguru import logger
 
-from src.auth.constants import OAUTH_SCOPES
+from src.auth.constants import (
+    GETGATHER_OAUTH_PROVIDER_NAME,
+    GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME,
+    OAUTH_SCOPES,
+)
 from src.settings import settings
-
-GETGATHER_OATUH_TOKEN_PREFIX = "getgather"
 
 # nameing pattern required by docker/podman
 GETGATHER_USER_ID_PATTERN = re.compile("^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
@@ -25,9 +27,11 @@ class GetgatherAuthTokenVerifier(TokenVerifier):
         - Z is a string of GETGATHER_USER_ID_PATTERN
         """
         parts = token.split("_")
+        provider_name = parts[0]
         if (
             len(parts) < 3
-            or parts[0] != GETGATHER_OATUH_TOKEN_PREFIX
+            or provider_name
+            not in (GETGATHER_OAUTH_PROVIDER_NAME, GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME)
             or parts[1] not in settings.GETGATHER_APPS
         ):
             logger.warning("Invalid getgather token", token=token)
@@ -48,5 +52,5 @@ class GetgatherAuthTokenVerifier(TokenVerifier):
             token=token,
             client_id=parts[1],
             scopes=OAUTH_SCOPES,
-            claims={"sub": sub, "app_name": app_name, "auth_provider": "getgather"},
+            claims={"sub": sub, "app_name": app_name, "auth_provider": provider_name},
         )

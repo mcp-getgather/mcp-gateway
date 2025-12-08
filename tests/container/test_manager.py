@@ -10,7 +10,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from uvicorn import Server
 
 from src.auth.auth import AuthUser
-from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX
+from src.auth.constants import GETGATHER_OAUTH_PROVIDER_NAME
 from src.container.container import Container
 from src.container.engine import engine_client
 from src.container.manager import (
@@ -98,7 +98,7 @@ async def test_one_time_container_lifecycle(
             # Step 2. make a request from a github user
             user_id = "test_user_id"
             app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
-            token = f"{GETGATHER_OATUH_TOKEN_PREFIX}_{app_key}_{user_id}"
+            token = f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}"
             user = await _make_mcp_request(token)
 
             assert user.app_name == app_name

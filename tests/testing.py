@@ -1,31 +1,43 @@
-import asyncio
-import sys
 import traceback
-from typing import TypedDict
+from typing import Annotated
 
+from cyclopts import App, Parameter
 from fastmcp import Client
 from rich import print
 
-TestConfig = TypedDict("TestConfig", {"mcp": str, "tool": str})
-
-configs: dict[str, TestConfig] = {
-    "user": {"mcp": "/mcp-media", "tool": "get_user_info"},
-    "npr": {"mcp": "/mcp-media", "tool": "npr_get_headlines"},
-    "goodreads": {"mcp": "/mcp-books", "tool": "goodreads_get_book_list"},
-}
+app = App(help="End-to-end testing of the mcp-gateway server.")
 
 
-async def call_tool(base_url: str, config: TestConfig):
-    url = f"{base_url}{config['mcp']}"
+@app.command(
+    help="""Call an mcp tool. Examples:\n
+    * python tests/testing
+    * python tests/testing --tool npr_get_headlines
+    * python tests/testing --mcp books --tool goodreads_get_book_list
+    * python tests/testing --token TOKEN
+    """
+)
+async def call_tool(
+    server_url: Annotated[
+        str, Parameter(help="URL of the mcp-gateway server")
+    ] = "http://localhost:9000",
+    mcp: Annotated[str, Parameter(help="name of the mcp server")] = "media",
+    tool: Annotated[str, Parameter(help="name of the tool")] = "get_user_info",
+    token: Annotated[str, Parameter(help="OAuth token to skip full auth flow")] | None = None,
+):
+    url = f"{server_url}/mcp-{mcp}"
     result = None
     error = None
     try:
-        async with Client(url, auth="oauth") as client:
-            result = await client.call_tool_mcp(config["tool"], {})
+        async with Client(url, auth=(token or "oauth")) as client:
+            result = await client.call_tool_mcp(tool, {})
     except Exception:
         error = traceback.format_exc()
 
-    print(f"Tool call:\n  mcp server: {url}\n  tool: {config['tool']}")
+    msg = f"Tool call:\n  mcp server: {url}\n  tool: {tool}"
+    if token:
+        msg = f"{msg}\n  token: {token}"
+
+    print(msg)
     if error:
         print("Error:")
         print(error)
@@ -35,16 +47,4 @@ async def call_tool(base_url: str, config: TestConfig):
 
 
 if __name__ == "__main__":
-    match len(sys.argv):
-        case 2:
-            test = sys.argv[1]
-            url = "http://localhost:9000"
-        case 3:
-            test = sys.argv[1]
-            url = sys.argv[2]
-        case _:
-            print("Usage: python tests/testing.py <test_name> [<url>]")
-            print(f"  possible test names: {', '.join(configs.keys())}")
-            sys.exit(1)
-
-    asyncio.run(call_tool(url, configs[test]))
+    app()
