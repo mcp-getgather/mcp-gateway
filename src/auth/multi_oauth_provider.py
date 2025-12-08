@@ -11,8 +11,12 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from src.auth.constants import OAUTH_SCOPES
-from src.auth.getgather_oauth_token import GETGATHER_OATUH_TOKEN_PREFIX, GetgatherAuthTokenVerifier
+from src.auth.constants import (
+    GETGATHER_OAUTH_PROVIDER_NAME,
+    GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME,
+    OAUTH_SCOPES,
+)
+from src.auth.getgather_oauth_token import GetgatherAuthTokenVerifier
 from src.auth.third_party_providers import get_available_providers, get_provider_scopes
 from src.settings import settings
 
@@ -30,7 +34,9 @@ class MultiOAuthTokenVerifier(TokenVerifier):
         super().__init__(required_scopes=OAUTH_SCOPES)
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        if token.startswith(GETGATHER_OATUH_TOKEN_PREFIX + "_"):
+        if token.startswith(GETGATHER_OAUTH_PROVIDER_NAME) or token.startswith(
+            GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME
+        ):
             return await getgather_auth_provider.verify_token(token)
         elif token.startswith("gho_") or token.startswith("ghp_"):
             github_provider = third_party_providers.get("github")

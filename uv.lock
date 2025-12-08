@@ -814,6 +814,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "assertpy" },
+    { name = "cyclopts" },
     { name = "icecream" },
     { name = "ipython" },
     { name = "pyright" },
@@ -846,6 +847,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "assertpy", specifier = ">=1.1" },
+    { name = "cyclopts", specifier = ">=4.0.0" },
     { name = "icecream", specifier = ">=2.1.7" },
     { name = "ipython", specifier = ">=9.5.0" },
     { name = "pyright", specifier = ">=1.1.405" },

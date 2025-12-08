@@ -62,7 +62,7 @@ class ContainerIdentity(BaseModel):
     def is_persistent(self) -> bool:
         """
         Return True if the container needs to be persisted after usage.
-        For now, it is assigned to a non-getgather user.
+        For now, it means the auth_provider is not 'getgather'.
         """
         return bool(self.user and self.user.auth_provider != "getgather")
 
