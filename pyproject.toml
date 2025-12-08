@@ -26,6 +26,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "assertpy>=1.1",
+    "cyclopts>=4.0.0",
     "icecream>=2.1.7",
     "ipython>=9.5.0",
     "pyright>=1.1.405",

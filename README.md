@@ -113,4 +113,5 @@ npm run dev
 
 To run unit tests, create a `.env.test` file and run `pytest`.
 
-You can also run manual tests by running `python tests/testing.py`.
+You can also run manual tests by running `python tests/testing.py call-tool -h`.
+To clear the client auth cache, run `rm -rf ~/.fastmcp/oauth-mcp-client-cache`.
