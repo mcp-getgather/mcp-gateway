@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     app = FastAPI(lifespan=lifespan)
-    logfire.instrument_fastapi(app, capture_headers=True)
+    logfire.instrument_fastapi(app, capture_headers=True, excluded_urls="/health")
 
     # Middleware to store incoming request headers for MCP routes
     @app.middleware("http")
