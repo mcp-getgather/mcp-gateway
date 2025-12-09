@@ -28,8 +28,10 @@
       <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
         <div>IP</div>
         <div>
-          {{ container.ip }} (<a href="http://{{ container.ip }}/live" target="_blank">live view</a
-          >)
+          {{ container.ip }}
+          {% if container.ip %}
+            (<a href="http://{{ container.ip }}/live" target="_blank">live view</a>)
+          {% endif %}
         </div>
         <div>Hostname</div>
         <div>{{ container.hostname }}</div>
@@ -64,9 +66,10 @@
             {% for container in manager_info.containers %}
               <tr>
                 <td>
-                  {{ container.ip }} (<a href="http://{{ container.ip }}/live" target="_blank"
-                    >live view</a
-                  >)
+                  {{ container.ip }}
+                  {% if container.ip %}
+                    (<a href="http://{{ container.ip }}/live" target="_blank">live view</a>)
+                  {% endif %}
                 </td>
                 <td>{{ container.name }}</td>
                 <td>{{ container.hostname }}</td>
