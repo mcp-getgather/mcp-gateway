@@ -152,6 +152,13 @@ class ContainerManager:
                         hostname=container.hostname,
                         user=user.dump(),
                     )
+                if container.ip is None:
+                    logger.warning(
+                        f"Running container has no IP address, adding it",
+                        hostname=container.hostname,
+                        user=user.dump(),
+                    )
+                    container = await ContainerService.connect_network(container)
             elif container.checkpointed:
                 # remove a random unassigned container to free up resource so the total number of running containers is maintained
                 container_to_remove = await cls.get_unassigned_container()
