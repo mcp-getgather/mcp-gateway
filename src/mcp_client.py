@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
+from typing import Literal, cast
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -72,6 +73,7 @@ class OAuthData:
 
     # for retrieving data
     data: MCPDataResponse | None = None
+    data_format: Literal["html", "json"] = "html"
     data_ready: asyncio.Event = field(default_factory=asyncio.Event)
 
     @classmethod
@@ -85,10 +87,12 @@ class OAuthData:
 
 @log_decorator
 async def auth_and_connect(
-    mcp_name: str, state: str | None = None
+    mcp_name: str, state: str | None = None, *, data_format: str = "html"
 ) -> MCPDataResponse | MCPAuthResponse:
     try:
-        return await _auth_and_connect(mcp_name, state)
+        return await _auth_and_connect(
+            mcp_name, state, data_format=cast(Literal["html", "json"], data_format)
+        )
     finally:
         # auth flow has 2 passes. 1st pass initializes, i.e., state == None.
         # 2nd pass handles callback with the same state, at the end, we will clear it
@@ -97,7 +101,7 @@ async def auth_and_connect(
 
 
 async def _auth_and_connect(
-    mcp_name: str, state: str | None = None
+    mcp_name: str, state: str | None = None, *, data_format: Literal["html", "json"] = "html"
 ) -> MCPDataResponse | MCPAuthResponse:
     """Create a one-time mcp client with to fetch the user and container info."""
     if state:
@@ -107,7 +111,7 @@ async def _auth_and_connect(
             raise HTTPException(status_code=400, detail="Invalid state")
     else:
         logger.info(f"Starting new auth", mcp=mcp_name)
-        oauth_data = OAuthData(mcp_name=mcp_name)
+        oauth_data = OAuthData(mcp_name=mcp_name, data_format=data_format)
 
     if oauth_data.auth_completed:
         await oauth_data.data_ready.wait()

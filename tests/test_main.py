@@ -44,7 +44,7 @@ async def test_account(server: Server):
     user_id = "test_user_id"
     app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
     mcp_name = "mcp-media"
-    url = f"{settings.GATEWAY_ORIGIN}/account/{mcp_name}"
+    url = f"{settings.GATEWAY_ORIGIN}/account/{mcp_name}?data_format=json"
 
     # Initiate auth flow
     async with httpx.AsyncClient() as client:
@@ -88,7 +88,12 @@ async def test_account(server: Server):
     assert response.url.path == f"/account/{mcp_name}"
 
     data = response.json()
-    assert data["user"] == {"sub": user_id, "auth_provider": "getgather", "app_name": app_name}
+    assert data["user"] == {
+        "sub": user_id,
+        "auth_provider": "getgather",
+        "app_name": app_name,
+        "is_admin": False,
+    }
 
     container_data = data["container"]
     # Mock extra container data provied by inspect for validation

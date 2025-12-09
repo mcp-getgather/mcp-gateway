@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import logfire
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
@@ -74,11 +74,15 @@ def create_app():
         await ContainerManager.recreate_all_containers()
 
     @app.get("/account/{mcp_name}")
-    async def account(request: Request, mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
-        result = await auth_and_connect(mcp_name, state)
+    async def account(  # type: ignore[reportUnusedFunction]
+        request: Request, mcp_name: str, state: str | None = None, data_format: str = "html"
+    ):
+        result = await auth_and_connect(mcp_name, state, data_format=data_format)
         if isinstance(result, MCPAuthResponse):
             return RedirectResponse(url=result.auth_url)
         else:
+            if data_format == "json":
+                return JSONResponse(content=result.model_dump(exclude_none=True, mode="json"))
 
             def to_pacific_time(dt: datetime, format: str = "%Y/%m/%d %H:%M:%S") -> str:
                 return dt.astimezone(ZoneInfo("America/Los_Angeles")).strftime(format)
@@ -98,7 +102,10 @@ def create_app():
     @app.get("/client/auth/callback")
     async def client_auth_callback(code: str, state: str):  # type: ignore[reportUnusedFunction]
         oauth_data = await handle_auth_code(state=state, code=code)
-        return RedirectResponse(url=f"/account/{oauth_data.mcp_name}?state={oauth_data.state}")
+        url = f"/account/{oauth_data.mcp_name}?state={oauth_data.state}"
+        if oauth_data.data_format == "json":
+            url += "&data_format=json"
+        return RedirectResponse(url=url)
 
     return app
 
