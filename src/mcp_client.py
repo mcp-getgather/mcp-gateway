@@ -4,15 +4,14 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import HTTPException
+from fastmcp import Client
 from loguru import logger
 from mcp.client.auth import OAuthClientProvider, TokenStorage
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 from pydantic import AnyUrl, BaseModel
 
 from src.auth.auth import AuthUser
-from src.container.manager import Container, ContainerManager
+from src.container.manager import Container, ContainerManager, ContainerManagerInfo
 from src.logs import log_decorator
 from src.settings import settings
 
@@ -20,6 +19,7 @@ from src.settings import settings
 class MCPDataResponse(BaseModel):
     user: AuthUser
     container: Container
+    manager_info: ContainerManagerInfo | None = None
 
 
 class MCPAuthResponse(BaseModel):
@@ -174,23 +174,22 @@ async def _auth_and_connect(
 
 async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthData):
     """Connect to the MCP server and get the user and container info."""
-    async with streamablehttp_client(server_url, auth=oauth_auth) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            logger.info(f"Connected to server", url=server_url)
+    async with Client(server_url, auth=oauth_auth) as client:
+        logger.info(f"Connected to server", url=server_url)
 
-            oauth_data.auth_completed = True
-            oauth_data.code_ready.set()
-            oauth_data.auth_url_ready.set()
+        oauth_data.auth_completed = True
+        oauth_data.code_ready.set()
+        oauth_data.auth_url_ready.set()
 
-            result = await session.call_tool("get_user_info")
-            if not result.structuredContent:
-                raise ValueError("Failed to get user info")
+        result = await client.call_tool_mcp("get_user_info", {})
+        if not result.structuredContent:
+            raise ValueError("Failed to get user info")
 
-            user = AuthUser(**result.structuredContent)
-            container = await ContainerManager.get_user_container(user)
-            oauth_data.data = MCPDataResponse(user=user, container=container)
-            oauth_data.data_ready.set()
+        user = AuthUser(**result.structuredContent)
+        container = await ContainerManager.get_user_container(user)
+        manager_info = await ContainerManager.get_manager_info() if user.is_admin else None
+        oauth_data.data = MCPDataResponse(user=user, container=container, manager_info=manager_info)
+        oauth_data.data_ready.set()
 
 
 @log_decorator

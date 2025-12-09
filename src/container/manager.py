@@ -1,11 +1,13 @@
 import asyncio
 import time
+from datetime import datetime
 from functools import cache
 from typing import Callable, Coroutine, TypeVar, cast
 
 import psutil
 from cachetools import TTLCache
 from loguru import logger
+from pydantic import BaseModel
 
 from src.auth.auth import AuthUser
 from src.container.container import Container
@@ -269,3 +271,21 @@ class ContainerManager:
         _active_assigned_pool.expire()
 
         return _active_assigned_pool.ttl
+
+    @classmethod
+    async def get_manager_info(cls) -> "ContainerManagerInfo":
+        """
+        Get the information of the ContainerManager and
+        all managed containers sorted by last activity time.
+        """
+        async with engine_client(network=CONTAINER_NETWORK_NAME, lock="read") as client:
+            containers = await ContainerService.get_containers(client=client, status="all")
+            for container in containers:
+                container.last_activity_at = await client.last_activity_at(container.id)
+
+        containers.sort(key=lambda c: c.last_activity_at or datetime.min, reverse=True)
+        return ContainerManagerInfo(containers=containers)
+
+
+class ContainerManagerInfo(BaseModel):
+    containers: list[Container]

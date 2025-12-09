@@ -1,0 +1,84 @@
+{% extends "template.html" %}
+
+{% block title %}GetGather Account{% endblock %}
+
+{% block content %}
+  <div class="grid">
+    <article>
+      <header>Auth user</header>
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div>Auth Provider</div>
+        <div>{{ auth_user.auth_provider }}</div>
+        <div>Sub</div>
+        <div>{{ auth_user.sub }}</div>
+        <div>Name</div>
+        <div>{{ auth_user.name }}</div>
+        <div>Login</div>
+        <div>{{ auth_user.login }}</div>
+        <div>Email</div>
+        <div>{{ auth_user.email }}</div>
+        <div>App name</div>
+        <div>{{ auth_user.app_name }}</div>
+        <div>Admin?</div>
+        <div>{{ auth_user.is_admin }}</div>
+      </div>
+    </article>
+    <article>
+      <header>Container</header>
+      <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div>IP</div>
+        <div>
+          {{ container.ip }} (<a href="http://{{ container.ip }}/live" target="_blank">live view</a
+          >)
+        </div>
+        <div>Hostname</div>
+        <div>{{ container.hostname }}</div>
+        <div>Name</div>
+        <div>{{ container.name }}</div>
+        <div>Status</div>
+        <div>{{ container.status }}</div>
+        <div>Started At</div>
+        <div>{{ container.started_at | datetime }}</div>
+        <div>Checkpointed?</div>
+        <div>{{ container.checkpointed }}</div>
+      </div>
+    </article>
+  </div>
+  {% if manager_info %}
+    <article>
+      <header>Manager Info</header>
+      <div class="overflow-auto">
+        <table>
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>Name</th>
+              <th>Hostname</th>
+              <th>Last Activity At</th>
+              <th>Status</th>
+              <th>Started At</th>
+              <th>Checkpointed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for container in manager_info.containers %}
+              <tr>
+                <td>
+                  {{ container.ip }} (<a href="http://{{ container.ip }}/live" target="_blank"
+                    >live view</a
+                  >)
+                </td>
+                <td>{{ container.name }}</td>
+                <td>{{ container.hostname }}</td>
+                <td>{{ container.last_activity_at | datetime }}</td>
+                <td>{{ container.status }}</td>
+                <td>{{ container.started_at | datetime }}</td>
+                <td>{{ container.checkpointed }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  {% endif %}
+{% endblock %}

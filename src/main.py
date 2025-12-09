@@ -2,12 +2,14 @@ import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime
 from typing import Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 import logfire
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from loguru import logger
 
 from src.auth.auth import setup_mcp_auth
@@ -72,14 +74,25 @@ def create_app():
         await ContainerManager.recreate_all_containers()
 
     @app.get("/account/{mcp_name}")
-    async def account(mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
+    async def account(request: Request, mcp_name: str, state: str | None = None):  # type: ignore[reportUnusedFunction]
         result = await auth_and_connect(mcp_name, state)
         if isinstance(result, MCPAuthResponse):
             return RedirectResponse(url=result.auth_url)
         else:
-            # TODO: return a web pageinstead of json
-            return JSONResponse(
-                status_code=200, content=result.model_dump(exclude_none=True, mode="json")
+
+            def to_pacific_time(dt: datetime, format: str = "%Y/%m/%d %H:%M:%S") -> str:
+                return dt.astimezone(ZoneInfo("America/Los_Angeles")).strftime(format)
+
+            templates = Jinja2Templates(directory=FRONTEND_DIR)
+            templates.env.filters["datetime"] = to_pacific_time  # type: ignore[reportUnknownMemberType]
+            return templates.TemplateResponse(
+                request,
+                "account.html",
+                context={
+                    "auth_user": result.user,
+                    "container": result.container,
+                    "manager_info": result.manager_info,
+                },
             )
 
     @app.get("/client/auth/callback")
