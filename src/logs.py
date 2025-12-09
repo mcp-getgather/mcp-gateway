@@ -36,6 +36,7 @@ def setup_logging():
                 repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
             ),
             console=False,
+            scrubbing=False,
         )
 
     _setup_logger(settings.LOG_LEVEL, settings.logs_dir, settings.VERBOSE)
