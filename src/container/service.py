@@ -240,6 +240,22 @@ class ContainerService:
 
     @classmethod
     @log_decorator
+    async def connect_network(
+        cls, container: Container, *, client: ContainerEngineClient | None = None
+    ):
+        async with engine_client(
+            client=client, network=CONTAINER_NETWORK_NAME, lock="write"
+        ) as _client:
+            await _client.connect_network(CONTAINER_NETWORK_NAME, container.id)
+
+            # refresh the container object
+            container = await _client.get_container(id=container.id)
+            logger.info(f"Connected container to network", container=container.dump())
+
+            return container
+
+    @classmethod
+    @log_decorator
     async def restore_container(
         cls, container: Container, *, client: ContainerEngineClient | None = None
     ):
@@ -250,10 +266,7 @@ class ContainerService:
                 return
 
             await _client.restore_container(container.id)
-            await _client.connect_network(CONTAINER_NETWORK_NAME, container.id)
-
-            # refresh the container object
-            container = await _client.get_container(id=container.id)
+            container = await cls.connect_network(container, client=_client)
             logger.info(f"Restored container", container=container.dump())
 
             return container
