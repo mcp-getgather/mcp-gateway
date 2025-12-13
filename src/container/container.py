@@ -15,6 +15,7 @@ class Container(BaseModel):
     status: Literal["running", "exited"]
     started_at: datetime  # datetime in UTC
     checkpointed: bool
+    last_activity_at: datetime | None = None
 
     info: dict[str, Any] = Field(exclude=True)
     network_name: str = Field(exclude=True)
