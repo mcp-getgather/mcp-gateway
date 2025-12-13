@@ -1,0 +1,31 @@
+name: Load the environment variables from Doppler
+description: Load the environment variables from Doppler into the GitHub environment
+
+inputs:
+  doppler-token:
+    description: Doppler token for authentication
+    required: true
+  project:
+    description: Doppler project name, which should be the same as the serivce and github repo
+    required: true
+  config:
+    description: Doppler config / environment name
+    required: false
+    default: github
+
+runs:
+  using: composite
+  steps:
+    - name: Load the environment variables from Doppler
+      shell: bash
+      run: |
+          curl -H "authorization: Bearer ${{ inputs.doppler-token }}" \
+            "https://api.doppler.com/v3/configs/config/secrets/download?project=${{ inputs.project }}&config=${{ inputs.config }}&format=json" \
+            -o .doppler-secrets.json
+
+          cat .doppler-secrets.json | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> $GITHUB_ENV
+
+          echo "✅ Successfully loaded the following environment variables from Doppler for project ${{ inputs.project }} in config ${{ inputs.config }}:"
+          cat .doppler-secrets.json | jq -r 'to_entries[] | .key'
+
+          rm .doppler-secrets.json
