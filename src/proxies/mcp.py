@@ -21,9 +21,11 @@ from src.container.container import Container
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
 from src.logs import log_decorator
+from src.proxy.selector import select_and_validate_proxy
 from src.residential_proxy_sessions import (
     GetgatherProxies,
     Location,
+    parse_proxies_toml,
     select_and_build_proxy_config,
 )
 from src.settings import settings
@@ -147,19 +149,51 @@ def _create_client_factory(path: str):
                 else:
                     headers_for_logging[header_name] = header_value
 
-        # Select and build proxy configuration
+        # Select and validate proxy configuration
         if settings.PROXIES_CONFIG:
             # Convert location_data dict to Location model
             location = Location(**location_data) if location_data else None
-            proxy_config = select_and_build_proxy_config(
-                toml_config=settings.PROXIES_CONFIG,
-                proxy_number=proxy_number,
-                default_proxy_number=settings.DEFAULT_PROXY_TYPE,
-                profile_id=container.hostname,
-                location=location,
-            )
-            # Write selected proxy config to container mount
-            await _write_proxy_config_to_container(container.hostname, proxy_config)
+
+            # Parse all available proxies from TOML
+            all_proxies = parse_proxies_toml(settings.PROXIES_CONFIG)
+            target_number = proxy_number or settings.DEFAULT_PROXY_TYPE or "proxy-0"
+            selected_proxy = all_proxies.get(target_number)
+
+            if selected_proxy:
+                logger.info(
+                    "Validating proxy with hierarchical fallback",
+                    proxy_number=target_number,
+                    proxy_name=selected_proxy.proxy_name,
+                    has_location=bool(location),
+                    hierarchy_fields=selected_proxy.hierarchy_fields,
+                )
+
+                # Validate with hierarchical fallback
+                validated_config, validated_ip, validated_location = await select_and_validate_proxy(
+                    selected_proxy,
+                    container.hostname,
+                    location,
+                    selected_proxy.hierarchy_fields,
+                )
+
+                if validated_config and validated_ip:
+                    logger.info(
+                        "✓ Proxy validation succeeded",
+                        proxy_number=target_number,
+                        validated_ip=validated_ip,
+                        validated_location=validated_location.model_dump(exclude_none=True) if validated_location else None,
+                    )
+                    # Write validated proxy config to container mount
+                    await _write_proxy_config_to_container(container.hostname, validated_config)
+                else:
+                    logger.error(
+                        "✗ Proxy validation failed for all hierarchy levels",
+                        proxy_number=target_number,
+                        original_location=location.model_dump(exclude_none=True) if location else None,
+                    )
+                    # Don't write config - container will use direct connection
+            else:
+                logger.warning(f"Proxy '{target_number}' not found in config")
 
         logger.info("Current Headers", headers=headers_for_logging)
         data = user.dump()
