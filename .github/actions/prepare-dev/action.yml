@@ -96,9 +96,9 @@ runs:
     - name: Docker pull mcp-getgather image
       shell: bash
       if: ${{ env.CONTAINER_ENGINE == 'docker' }}
-      run: docker image pull ghcr.io/mcp-getgather/mcp-getgather
+      run: docker image pull ghcr.io/remotebrowser/mcp-getgather
 
     - name: Podman pull mcp-getgather image
       shell: bash
       if: ${{ env.CONTAINER_ENGINE == 'podman' }}
-      run: sudo podman image pull ghcr.io/mcp-getgather/mcp-getgather
+      run: sudo podman image pull ghcr.io/remotebrowser/mcp-getgather
