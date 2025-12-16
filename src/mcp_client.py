@@ -1,18 +1,18 @@
 import asyncio
 from dataclasses import dataclass, field
+from typing import Literal, cast
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import HTTPException
+from fastmcp import Client
 from loguru import logger
 from mcp.client.auth import OAuthClientProvider, TokenStorage
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
 from pydantic import AnyUrl, BaseModel
 
 from src.auth.auth import AuthUser
-from src.container.manager import Container, ContainerManager
+from src.container.manager import Container, ContainerManager, ContainerManagerInfo
 from src.logs import log_decorator
 from src.settings import settings
 
@@ -20,6 +20,7 @@ from src.settings import settings
 class MCPDataResponse(BaseModel):
     user: AuthUser
     container: Container
+    manager_info: ContainerManagerInfo | None = None
 
 
 class MCPAuthResponse(BaseModel):
@@ -72,6 +73,7 @@ class OAuthData:
 
     # for retrieving data
     data: MCPDataResponse | None = None
+    data_format: Literal["html", "json"] = "html"
     data_ready: asyncio.Event = field(default_factory=asyncio.Event)
 
     @classmethod
@@ -85,10 +87,12 @@ class OAuthData:
 
 @log_decorator
 async def auth_and_connect(
-    mcp_name: str, state: str | None = None
+    mcp_name: str, state: str | None = None, *, data_format: str = "html"
 ) -> MCPDataResponse | MCPAuthResponse:
     try:
-        return await _auth_and_connect(mcp_name, state)
+        return await _auth_and_connect(
+            mcp_name, state, data_format=cast(Literal["html", "json"], data_format)
+        )
     finally:
         # auth flow has 2 passes. 1st pass initializes, i.e., state == None.
         # 2nd pass handles callback with the same state, at the end, we will clear it
@@ -97,7 +101,7 @@ async def auth_and_connect(
 
 
 async def _auth_and_connect(
-    mcp_name: str, state: str | None = None
+    mcp_name: str, state: str | None = None, *, data_format: Literal["html", "json"] = "html"
 ) -> MCPDataResponse | MCPAuthResponse:
     """Create a one-time mcp client with to fetch the user and container info."""
     if state:
@@ -107,7 +111,7 @@ async def _auth_and_connect(
             raise HTTPException(status_code=400, detail="Invalid state")
     else:
         logger.info(f"Starting new auth", mcp=mcp_name)
-        oauth_data = OAuthData(mcp_name=mcp_name)
+        oauth_data = OAuthData(mcp_name=mcp_name, data_format=data_format)
 
     if oauth_data.auth_completed:
         await oauth_data.data_ready.wait()
@@ -174,23 +178,22 @@ async def _auth_and_connect(
 
 async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthData):
     """Connect to the MCP server and get the user and container info."""
-    async with streamablehttp_client(server_url, auth=oauth_auth) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            logger.info(f"Connected to server", url=server_url)
+    async with Client(server_url, auth=oauth_auth) as client:
+        logger.info(f"Connected to server", url=server_url)
 
-            oauth_data.auth_completed = True
-            oauth_data.code_ready.set()
-            oauth_data.auth_url_ready.set()
+        oauth_data.auth_completed = True
+        oauth_data.code_ready.set()
+        oauth_data.auth_url_ready.set()
 
-            result = await session.call_tool("get_user_info")
-            if not result.structuredContent:
-                raise ValueError("Failed to get user info")
+        result = await client.call_tool_mcp("get_user_info", {})
+        if not result.structuredContent:
+            raise ValueError("Failed to get user info")
 
-            user = AuthUser(**result.structuredContent)
-            container = await ContainerManager.get_user_container(user)
-            oauth_data.data = MCPDataResponse(user=user, container=container)
-            oauth_data.data_ready.set()
+        user = AuthUser(**result.structuredContent)
+        container = await ContainerManager.get_user_container(user)
+        manager_info = await ContainerManager.get_manager_info() if user.is_admin else None
+        oauth_data.data = MCPDataResponse(user=user, container=container, manager_info=manager_info)
+        oauth_data.data_ready.set()
 
 
 @log_decorator

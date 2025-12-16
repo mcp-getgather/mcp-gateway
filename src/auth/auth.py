@@ -8,7 +8,7 @@ from loguru import logger
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.provider import TokenVerifier
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from starlette.datastructures import Headers
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
@@ -17,7 +17,7 @@ from starlette.types import Receive, Scope, Send
 
 from src.auth.constants import OAUTH_PROVIDER_NAME
 from src.auth.multi_oauth_provider import MultiOAuthProvider, auth_enabled
-from src.settings import FRONTEND_DIR
+from src.settings import FRONTEND_DIR, settings
 
 
 class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
@@ -121,6 +121,15 @@ class AuthUser(BaseModel):
     def user_id(self) -> str:
         """Unique user name combining login and auth provider"""
         return f"{self.sub}.{self.auth_provider}"
+
+    @computed_field
+    @property
+    def is_admin(self) -> bool:
+        return bool(
+            self.auth_provider == "google"
+            and self.email
+            and self.email.lower().endswith(f"@{settings.ADMIN_EMAIL_DOMAIN}")
+        )
 
     @classmethod
     def from_user_id(cls, user_id: str) -> "AuthUser":

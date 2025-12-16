@@ -1,5 +1,5 @@
+import json
 import re
-import tomllib
 from typing import Any, Literal, TypeAlias
 from urllib.parse import urlparse
 
@@ -282,23 +282,26 @@ def _build_params(template: str, profile_id: str, location: Location | None) -> 
 
 
 def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
-    """Parse TOML-format proxy configuration string.
+    """Parse JSON-format proxy configuration string.
 
     Args:
-        toml_str: TOML configuration string
+        toml_str: JSON configuration string (parameter name kept for backward compatibility)
 
     Returns:
         dict: Mapping of proxy names to ProxyConfig instances
 
-    Example TOML:
-        [proxy-0]
-        name = "oxylabs_direct"
-        url = "pr.oxylabs.io:7777"
-        username_template = "customer-{session_id}"
-        password = "secret123"
+    Example JSON:
+        {
+            "proxy-0": {
+                "name": "oxylabs_direct",
+                "url": "pr.oxylabs.io:7777",
+                "username_template": "customer-{session_id}",
+                "password": "secret123"
+            }
+        }
     """
     try:
-        config_dict = tomllib.loads(toml_str)
+        config_dict = json.loads(toml_str)
         proxies: dict[str, ProxyConfig] = {}
 
         for name, proxy_data in config_dict.items():
@@ -312,19 +315,19 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
                 hierarchy_fields=proxy_data.get("hierarchy_fields"),  # type: ignore[arg-type]
             )
 
-        logger.info(f"Parsed {len(proxies)} proxies from TOML config")
+        logger.info(f"Parsed {len(proxies)} proxies from JSON config")
         return proxies
 
-    except tomllib.TOMLDecodeError as e:
-        logger.error(f"Failed to parse TOML config: {e}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON config: {e}")
         return {}
 
 
 def get_proxy_config(toml_config: str, proxy_name: str = "proxy-0") -> ProxyConfig | None:
-    """Get a specific proxy configuration from TOML config.
+    """Get a specific proxy configuration from JSON config.
 
     Args:
-        toml_config: TOML configuration string
+        toml_config: JSON configuration string (parameter name kept for backward compatibility)
         proxy_name: Name of proxy to retrieve (default: proxy-0)
 
     Returns:
@@ -341,7 +344,7 @@ def select_and_build_proxy_config(
     profile_id: str,
     location: Location | None = None,
 ) -> GetgatherProxies | None:
-    """Select a proxy from TOML config and build its configuration.
+    """Select a proxy from JSON config and build its configuration.
 
     Selection priority:
     1. proxy_number (from x-proxy-type header)
@@ -349,7 +352,7 @@ def select_and_build_proxy_config(
     3. First available proxy in config
 
     Args:
-        toml_config: TOML configuration string with all available proxies
+        toml_config: JSON configuration string with all available proxies (parameter name kept for backward compatibility)
         proxy_number: Proxy number from x-proxy-type header (e.g., "proxy-1")
         default_proxy_number: Default proxy number from settings (e.g., "proxy-0")
         profile_id: Profile ID to use as session identifier
@@ -359,13 +362,13 @@ def select_and_build_proxy_config(
         GetgatherProxies: Proxy configuration or None if no proxy
     """
     if not toml_config:
-        logger.info("No TOML config provided, skipping proxy selection")
+        logger.info("No JSON config provided, skipping proxy selection")
         return None
 
     # Parse all available proxies
     all_proxies = parse_proxies_toml(toml_config)
     if not all_proxies:
-        logger.info("No proxies found in TOML config")
+        logger.info("No proxies found in JSON config")
         return None
 
     # Determine which proxy to use (priority order)

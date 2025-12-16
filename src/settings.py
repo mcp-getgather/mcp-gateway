@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     DATA_DIR: str = ""
 
     ADMIN_API_TOKEN: str = ""
+    ADMIN_EMAIL_DOMAIN: str = ""
     GATEWAY_ORIGIN: str = ""
     GATEWAY_SENTRY_DSN: str = ""
 
