@@ -17,6 +17,7 @@ from starlette.types import Receive, Scope, Send
 
 from src.auth.constants import OAUTH_PROVIDER_NAME
 from src.auth.multi_oauth_provider import MultiOAuthProvider, auth_enabled
+from src.http_utils import get_server_origin
 from src.settings import FRONTEND_DIR, settings
 
 
@@ -43,14 +44,14 @@ class RequireAuthMiddlewareCustom(RequireAuthMiddleware):
             await self.app(scope, receive, send)
 
 
-def setup_mcp_auth(app: FastAPI, mcp_routes: list[str]):
-    if not auth_enabled():
-        logger.warning("MCP authentication is disabled")
+def setup_mcp_auth(app: FastAPI, server_origin: str, mcp_routes: list[str]):
+    if not auth_enabled(server_origin):
+        logger.warning(f"MCP authentication is disabled for server origin: {server_origin}")
         return
 
     logger.info("Setting up MCP authentication")
 
-    auth_provider = MultiOAuthProvider()
+    auth_provider = MultiOAuthProvider(base_url=server_origin)
 
     # Set up OAuth routes
     for route in auth_provider.get_routes():
@@ -143,7 +144,7 @@ class AuthUser(BaseModel):
 
 
 def get_auth_user() -> AuthUser:
-    if not auth_enabled():
+    if not auth_enabled(get_server_origin()):
         # for testing only when auth is disabled
         return AuthUser(sub="test_user", auth_provider="getgather")
 

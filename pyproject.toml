@@ -37,7 +37,7 @@ dev = [
 ]
 
 [tool.ruff]
-src = ["src"]
+src = ["src", "tests"]
 exclude = [
   "**/__pycache__",
   "**/.pytest_cache",
@@ -59,7 +59,7 @@ select = ["I", "UP045", "UP006", "UP007"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party = ["src"]
+known-first-party = ["src", "tests"]
 
 [tool.yamlfix]
 exclude = ["**/.venv/**"]

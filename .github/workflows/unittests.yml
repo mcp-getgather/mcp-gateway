@@ -34,7 +34,6 @@ jobs:
         shell: bash
         run: uv run pytest -o env=ENV_FILE=
         env:
-          GATEWAY_ORIGIN: http://localhost:9000
           CONTAINER_PROJECT_NAME: getgather-ci
           CONTAINER_SUBNET_PREFIX: 172.24.1
           GETGATHER_APPS: '{"test-app-key":"test-app-name"}'
