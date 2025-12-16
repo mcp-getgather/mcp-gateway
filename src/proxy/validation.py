@@ -6,7 +6,6 @@ if they can successfully fetch an external IP address.
 
 import asyncio
 import re
-from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -47,9 +46,9 @@ def mask_credentials(url: str) -> str:
 
 async def validate_proxy_ip(
     proxy_url: str,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-) -> tuple[bool, Optional[str]]:
+    username: str | None = None,
+    password: str | None = None,
+) -> tuple[bool, str | None]:
     """Validate proxy by fetching external IP.
 
     Makes a request through the proxy to checkip.amazonaws.com to verify:
@@ -94,7 +93,7 @@ async def validate_proxy_ip(
                 ip = response.text.strip()
 
                 # Validate it's actually an IP address (IPv4 or IPv6)
-                if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', ip) or ':' in ip:
+                if re.match(r"^(\d{1,3}\.){3}\d{1,3}$", ip) or ":" in ip:
                     logger.info(
                         f"✓ Proxy validation succeeded",
                         attempt=attempt,

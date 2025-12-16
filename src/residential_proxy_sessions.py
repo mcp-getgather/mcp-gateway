@@ -101,7 +101,9 @@ class ProxyConfig(BaseModel):
     password: str | None = None
     server: str | None = None
     masked_url: str | None = None
-    hierarchy_fields: list[str] | None = None  # e.g., ["postal_code", "city", "state"] or ["city+state", "city"]
+    hierarchy_fields: list[str] | None = (
+        None  # e.g., ["postal_code", "city", "state"] or ["city+state", "city"]
+    )
 
     def model_post_init(self, __context: Any) -> None:
         # either simple url or instantiated url_template

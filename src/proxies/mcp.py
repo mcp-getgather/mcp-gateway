@@ -26,7 +26,6 @@ from src.residential_proxy_sessions import (
     GetgatherProxies,
     Location,
     parse_proxies_toml,
-    select_and_build_proxy_config,
 )
 from src.settings import settings
 
@@ -169,7 +168,11 @@ def _create_client_factory(path: str):
                 )
 
                 # Validate with hierarchical fallback
-                validated_config, validated_ip, validated_location = await select_and_validate_proxy(
+                (
+                    validated_config,
+                    validated_ip,
+                    validated_location,
+                ) = await select_and_validate_proxy(
                     selected_proxy,
                     container.hostname,
                     location,
@@ -181,7 +184,9 @@ def _create_client_factory(path: str):
                         "✓ Proxy validation succeeded",
                         proxy_number=target_number,
                         validated_ip=validated_ip,
-                        validated_location=validated_location.model_dump(exclude_none=True) if validated_location else None,
+                        validated_location=validated_location.model_dump(exclude_none=True)
+                        if validated_location
+                        else None,
                     )
                     # Write validated proxy config to container mount
                     await _write_proxy_config_to_container(container.hostname, validated_config)
@@ -189,7 +194,9 @@ def _create_client_factory(path: str):
                     logger.error(
                         "✗ Proxy validation failed for all hierarchy levels",
                         proxy_number=target_number,
-                        original_location=location.model_dump(exclude_none=True) if location else None,
+                        original_location=location.model_dump(exclude_none=True)
+                        if location
+                        else None,
                     )
                     # Don't write config - container will use direct connection
             else:

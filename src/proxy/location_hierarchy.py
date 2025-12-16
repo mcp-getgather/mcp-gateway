@@ -98,7 +98,7 @@ def build_location_hierarchy(
     return hierarchy
 
 
-def _build_location_dict(location: Location, fields: list[str]) -> dict[str, str] | None:
+def _build_location_dict(location: Location, fields: list[str]) -> dict[str, str | None] | None:
     """Build location dict with specified fields plus country.
 
     Args:
@@ -113,7 +113,7 @@ def _build_location_dict(location: Location, fields: list[str]) -> dict[str, str
         >>> _build_location_dict(loc, ["city", "state"])
         {'country': 'us', 'city': 'los_angeles', 'state': 'california'}
     """
-    loc_dict: dict[str, str] = {"country": location.country}
+    loc_dict: dict[str, str | None] = {"country": location.country}
 
     for field in fields:
         value = getattr(location, field, None)
@@ -143,7 +143,7 @@ def describe_location(location: Location) -> str:
         >>> describe_location(loc)
         'los_angeles, california, us'
     """
-    parts = []
+    parts: list[str] = []
     if location.postal_code:
         parts.append(location.postal_code)
     if location.city:
@@ -184,7 +184,7 @@ def detect_hierarchy_fields_from_template(template: str) -> list[str] | None:
         return None
 
     # Build hierarchy based on which fields are present
-    fields = []
+    fields: list[str] = []
     if has_postal:
         fields.append("postal_code")
     if has_city:
