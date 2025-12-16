@@ -1,6 +1,6 @@
 # mcp-gateway
 
-`mcp-gateway` manages a group of [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) containers. It authenticates user and routes to the user's personal `mcp-getgather` container.
+`mcp-gateway` manages a group of [mcp-getgather](https://github.com/remotebrowser/mcp-getgather) containers. It authenticates user and routes to the user's personal `mcp-getgather` container.
 
 Below are instructions to run `mcp-gateway` on MacOS for development.
 
@@ -69,14 +69,14 @@ tailscale status --json | jq -r '
 ' | sort -u
 ```
 
-2. Download the latest [mcp-getgather](https://github.com/mcp-getgather/mcp-getgather) image
+2. Download the latest [mcp-getgather](https://github.com/remotebrowser/mcp-getgather) image
 
 ```bash
-docker image pull ghcr.io/mcp-getgather/mcp-getgather
-docker tag ghcr.io/mcp-getgather/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
+docker image pull ghcr.io/remotebrowser/mcp-getgather
+docker tag ghcr.io/remotebrowser/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
 # or
-podman image pull ghcr.io/mcp-getgather/mcp-getgather
-podman tag ghcr.io/mcp-getgather/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
+podman image pull ghcr.io/remotebrowser/mcp-getgather
+podman tag ghcr.io/remotebrowser/mcp-getgather ${CONTAINER_PROJECT_NAME}_mcp-getgather
 ```
 
 You can also build `mcp-getgather` image locally

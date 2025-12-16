@@ -114,7 +114,7 @@ class ContainerService:
 
     @classmethod
     async def pull_container_image(cls):
-        source_image = "ghcr.io/mcp-getgather/mcp-getgather:latest"
+        source_image = "ghcr.io/remotebrowser/mcp-getgather:latest"
         logger.info(f"Pulling container image", source=source_image)
         async with engine_client(network=CONTAINER_NETWORK_NAME) as client:
             await client.pull_image(source_image, tag=CONTAINER_IMAGE_NAME)

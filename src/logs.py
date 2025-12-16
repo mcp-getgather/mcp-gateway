@@ -33,7 +33,7 @@ def setup_logging():
             token=settings.LOGFIRE_TOKEN,
             environment=settings.ENVIRONMENT,
             code_source=logfire.CodeSource(
-                repository="https://github.com/mcp-getgather/mcp-gateway", revision="main"
+                repository="https://github.com/remotebrowser/mcp-gateway", revision="main"
             ),
             console=False,
             scrubbing=False,
