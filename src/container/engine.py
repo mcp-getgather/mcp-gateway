@@ -2,6 +2,7 @@ import asyncio
 import json
 import platform
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Protocol
 
@@ -124,6 +125,11 @@ class ContainerEngineClient:
         if len(infos) != len(ids):
             raise Exception(f"Failed to inspect containers: {ids}")
         return infos
+
+    async def last_activity_at(self, id: str) -> datetime:
+        """Get the last activity time of a container by checking the last log entry."""
+        result = await self.run("logs", "--timestamps", "--tail", "1", id)
+        return datetime.fromisoformat(result.split(" ")[0])
 
     async def create_container(
         self,
