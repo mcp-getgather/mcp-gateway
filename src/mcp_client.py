@@ -13,8 +13,8 @@ from pydantic import AnyUrl, BaseModel
 
 from src.auth.auth import AuthUser
 from src.container.manager import Container, ContainerManager, ContainerManagerInfo
+from src.http_utils import get_server_origin
 from src.logs import log_decorator
-from src.settings import settings
 
 
 class MCPDataResponse(BaseModel):
@@ -151,12 +151,13 @@ async def _auth_and_connect(
 
         return oauth_data.code, oauth_data.state
 
-    server_url = f"{settings.GATEWAY_ORIGIN}/{mcp_name}"
+    server_origin = get_server_origin()
+    server_url = f"{server_origin}/{mcp_name}"
     oauth_auth = OAuthClientProvider(
         server_url=server_url,
         client_metadata=OAuthClientMetadata(
             client_name="GetGather MCP Client",
-            redirect_uris=[AnyUrl(f"{settings.GATEWAY_ORIGIN}/client/auth/callback")],
+            redirect_uris=[AnyUrl(f"{server_origin}/client/auth/callback")],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
             scope=None,  # let server decide the default scopes which is different among auth providers (e.g., github and google)
@@ -165,7 +166,6 @@ async def _auth_and_connect(
         redirect_handler=handle_redirect,
         callback_handler=handle_callback,
     )
-
     asyncio.create_task(_connect(server_url, oauth_auth, oauth_data))
 
     await oauth_data.auth_url_ready.wait()
@@ -176,11 +176,20 @@ async def _auth_and_connect(
     return MCPAuthResponse(auth_url=oauth_data.auth_url)
 
 
+async def test_connection(url: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            logger.info(f"Response", url=url, response=response.text)
+    except Exception as e:
+        logger.error(f"Error connecting to server", url=url, error=e)
+
+
 async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthData):
     """Connect to the MCP server and get the user and container info."""
-    async with Client(server_url, auth=oauth_auth) as client:
-        logger.info(f"Connected to server", url=server_url)
+    logger.info(f"Connecting to server", url=server_url)
 
+    async with Client(server_url, auth=oauth_auth) as client:
         oauth_data.auth_completed = True
         oauth_data.code_ready.set()
         oauth_data.auth_url_ready.set()

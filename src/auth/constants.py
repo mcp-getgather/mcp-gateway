@@ -1,5 +1,7 @@
 from typing import Literal, get_args
 
+from pydantic import BaseModel
+
 # first party oauth providers: getgather, getgather-persistent
 GETGATHER_OAUTH_PROVIDER_NAME = "getgather"
 GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME = "getgather-persistent"
@@ -13,3 +15,9 @@ OAUTH_PROVIDER_NAME = (
 OAUTH_PROVIDERS = list(get_args(OAUTH_PROVIDER_NAME))
 
 OAUTH_SCOPES = ["getgather_user_scope"]  # dummy scope to make scope validation work
+
+
+class OAuthProviderConfig(BaseModel):
+    name: THIRD_PARTY_OAUTH_PROVIDER_NAME
+    client_id: str
+    client_secret: str

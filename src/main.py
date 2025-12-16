@@ -1,5 +1,6 @@
 import asyncio
-from contextlib import AsyncExitStack, asynccontextmanager
+import signal
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from datetime import datetime
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
@@ -15,8 +16,9 @@ from loguru import logger
 from src.auth.auth import setup_mcp_auth
 from src.container.manager import ContainerManager
 from src.container.service import ContainerService
+from src.http_utils import incoming_headers_context
 from src.mcp_client import MCPAuthResponse, auth_and_connect, handle_auth_code
-from src.proxies.mcp import get_mcp_apps, incoming_headers_context
+from src.proxies.mcp import get_mcp_apps
 from src.proxies.web import WebProxyMiddleware
 from src.settings import FRONTEND_DIR, settings
 
@@ -50,9 +52,7 @@ def create_app():
     async def store_mcp_headers(  # type: ignore
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:  # type: ignore[reportUnusedFunction]
-        if request.url.path.startswith("/mcp"):  # type: ignore
-            # Store all incoming headers in context for access during request
-            incoming_headers_context.set(dict(request.headers))
+        incoming_headers_context.set(dict(request.headers))
         response = await call_next(request)
         return response
 
@@ -110,7 +110,13 @@ def create_app():
     return app
 
 
-async def create_server():
+class NoSignalServer(uvicorn.Server):
+    @contextmanager
+    def capture_signals(self):  # prevent uvicorn from owning global handlers
+        yield
+
+
+async def create_servers():
     """
     Start mcp-getgather containers, fetch MCP routes,
     then set up the FastAPI server and start it.
@@ -118,33 +124,44 @@ async def create_server():
     await ContainerManager.init_active_assigned_pool()
     await ContainerManager.refresh_standby_pool()
 
-    app = create_app()
-    app.state.mcp_apps = await get_mcp_apps()
-    setup_mcp_auth(app, list(app.state.mcp_apps.keys()))
+    servers: dict[str, uvicorn.Server] = {}
+    for server_config in settings.SERVER_CONFIGS:
+        app = create_app()
+        app.state.mcp_apps = await get_mcp_apps()
+        setup_mcp_auth(app, server_config.origin, list(app.state.mcp_apps.keys()))
 
-    for route, mcp_app in app.state.mcp_apps.items():
-        app.mount(route, mcp_app)
+        for route, mcp_app in app.state.mcp_apps.items():
+            app.mount(route, mcp_app)
 
-    config = uvicorn.Config(
-        app=app,
-        host="0.0.0.0",
-        port=9000,
-        log_level=settings.LOG_LEVEL.lower(),
-        proxy_headers=True,
-        forwarded_allow_ips="*",
-        reload=False,  # reload is handled by nodemon since app needs dynamic set up
-    )
-    server = uvicorn.Server(config)
-    return server
+        config = uvicorn.Config(
+            app=app,
+            host="0.0.0.0",
+            port=server_config.port,
+            log_level=settings.LOG_LEVEL.lower(),
+            proxy_headers=True,
+            forwarded_allow_ips="*",
+            reload=False,  # reload is handled by nodemon since app needs dynamic set up
+        )
+        servers[server_config.origin] = NoSignalServer(config)
+    return servers
 
 
 async def main():
-    server = await create_server()
-    await server.serve()
+    servers = await create_servers()
+    tasks = [asyncio.create_task(s.serve()) for s in servers.values()]
+
+    # manually handle signals so we can shutdown multiple servers gracefully
+    def stop():
+        logger.info("Shutting down servers")
+        for s in servers.values():
+            s.should_exit = True
+
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGINT, stop)
+    loop.add_signal_handler(signal.SIGTERM, stop)
+
+    await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
+    asyncio.run(main())

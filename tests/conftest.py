@@ -2,6 +2,7 @@ import asyncio
 import shutil
 import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -27,25 +28,32 @@ from src.container.service import (
     CONTAINER_STARTUP_SECONDS,
     ContainerService,
 )
-from src.main import create_server
+from src.main import create_servers
 from src.settings import ENV_FILE, settings
 
 
+@dataclass
+class ServerWithOrigin:
+    origin: str
+    server: Server
+
+
 @pytest_asyncio.fixture(scope="function")
-async def server(server_factory: Callable[[], AsyncGenerator[Server, None]]):
+async def server(server_factory: Callable[[], AsyncGenerator[ServerWithOrigin, None]]):
     async for server in server_factory():
         yield server
         break
 
 
 @pytest.fixture(scope="function")
-def server_factory() -> Callable[[], AsyncGenerator[Server, None]]:
-    async def _create_server() -> AsyncGenerator[Server, None]:
-        server = await create_server()
+def server_factory() -> Callable[[], AsyncGenerator[ServerWithOrigin, None]]:
+    async def _create_server() -> AsyncGenerator[ServerWithOrigin, None]:
+        servers = await create_servers()
+        server_origin, server = next(iter(servers.items()))
         server_task = asyncio.create_task(server.serve())
 
         # wait for server to start
-        url = f"{settings.GATEWAY_ORIGIN}/health"
+        url = f"{server_origin}/health"
         end_time = time.time() + CONTAINER_STARTUP_SECONDS + 5
 
         try:
@@ -54,7 +62,7 @@ def server_factory() -> Callable[[], AsyncGenerator[Server, None]]:
                     async with httpx.AsyncClient() as client:
                         response = await client.get(url, timeout=1.0)
                         if response.is_success:
-                            yield server
+                            yield ServerWithOrigin(origin=server_origin, server=server)
                             break
                 except httpx.RequestError:
                     pass

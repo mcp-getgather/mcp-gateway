@@ -1,6 +1,5 @@
 import json
 import os
-from contextvars import ContextVar
 from time import sleep
 from typing import Any, NamedTuple
 from urllib.parse import urlparse
@@ -20,6 +19,7 @@ from src.auth.auth import get_auth_user
 from src.container.container import Container
 from src.container.manager import ContainerManager
 from src.container.service import CONTAINER_STARTUP_SECONDS
+from src.http_utils import get_server_origin, incoming_headers_context
 from src.logs import log_decorator
 from src.residential_proxy_sessions import (
     GetgatherProxies,
@@ -27,8 +27,6 @@ from src.residential_proxy_sessions import (
     select_and_build_proxy_config,
 )
 from src.settings import settings
-
-incoming_headers_context: ContextVar[dict[str, str]] = ContextVar("incoming_headers", default={})
 
 MCPRoute = NamedTuple("MCPRoute", [("name", str), ("path", str)])
 
@@ -95,7 +93,7 @@ def _create_client_factory(path: str):
     async def _create_client():
         user = get_auth_user()
         container = await ContainerManager.get_user_container(user)
-        gatewway_origin = urlparse(settings.GATEWAY_ORIGIN)
+        gatewway_origin = urlparse(get_server_origin())
 
         headers = {
             "x-forwarded-proto": gatewway_origin.scheme,

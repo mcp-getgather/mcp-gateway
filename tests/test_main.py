@@ -10,22 +10,22 @@ from mcp.server.auth.provider import AuthorizationCode
 from mcp.shared.auth import OAuthToken
 from pydantic import AnyUrl
 from starlette.routing import Route
-from uvicorn import Server
 
 from src import mcp_client
 from src.auth.constants import GETGATHER_OAUTH_PROVIDER_NAME, OAUTH_SCOPES
 from src.auth.multi_oauth_provider import auth_enabled
-from src.auth.third_party_providers import get_provider_scopes
+from src.auth.third_party_providers import ThirdPartyOAuth
 from src.container.container import Container
 from src.settings import settings
+from tests.conftest import ServerWithOrigin
 
 
 @pytest.mark.asyncio
-async def test_service_startup(server: Server):
-    app = cast(FastAPI, server.config.app)
+async def test_service_startup(server: ServerWithOrigin):
+    app = cast(FastAPI, server.server.config.app)
     routes = [cast(Route, route).path for route in app.routes]
     assert_that(routes).contains("/admin/reload", "/mcp", "/mcp-media", "/mcp-books")
-    if auth_enabled():
+    if auth_enabled(server.origin):
         assert_that(routes).contains(
             "/.well-known/oauth-authorization-server",
             "/.well-known/oauth-protected-resource",
@@ -39,12 +39,12 @@ async def test_service_startup(server: Server):
 
 
 @pytest.mark.asyncio
-async def test_account(server: Server):
+async def test_account(server: ServerWithOrigin):
     """Test the account page flow with getgather auth provider."""
     user_id = "test_user_id"
     app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
     mcp_name = "mcp-media"
-    url = f"{settings.GATEWAY_ORIGIN}/account/{mcp_name}?data_format=json"
+    url = f"{server.origin}/account/{mcp_name}?data_format=json"
 
     # Initiate auth flow
     async with httpx.AsyncClient() as client:
@@ -61,14 +61,14 @@ async def test_account(server: Server):
         expires_at=time.time() + 1000,
         client_id=oauth_data.client_id or "",
         code_challenge=oauth_data.code_challenge or "",
-        redirect_uri=AnyUrl(f"{settings.GATEWAY_ORIGIN}/client/auth/callback"),
+        redirect_uri=AnyUrl(f"{server.origin}/client/auth/callback"),
         redirect_uri_provided_explicitly=True,
-        resource=settings.GATEWAY_ORIGIN,
+        resource=server.origin,
     )
     oauth_token = OAuthToken(
         access_token=f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}",
         expires_in=1000,
-        scope=" ".join(get_provider_scopes()),
+        scope=" ".join(ThirdPartyOAuth.get_scopes()),
     )
     callback_url = f"{auth_code.redirect_uri}?code={auth_code.code}&state={oauth_data.state}"
     with (

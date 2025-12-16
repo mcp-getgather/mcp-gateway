@@ -5,9 +5,7 @@ from typing import Callable, Literal, cast, overload
 from unittest.mock import patch
 
 import pytest
-from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
-from uvicorn import Server
+from fastmcp import Client
 
 from src.auth.auth import AuthUser
 from src.auth.constants import GETGATHER_OAUTH_PROVIDER_NAME
@@ -20,6 +18,7 @@ from src.container.manager import (
 )
 from src.container.service import CONTAINER_LABELS, CONTAINER_NETWORK_NAME, UNASSIGNED_USER_ID
 from src.settings import settings
+from tests.conftest import ServerWithOrigin
 
 
 @pytest.mark.skipif(
@@ -28,7 +27,7 @@ from src.settings import settings
 )
 @pytest.mark.asyncio
 async def test_persistent_container_lifecycle(
-    server_factory: Callable[[], AsyncGenerator[Server, None]],
+    server_factory: Callable[[], AsyncGenerator[ServerWithOrigin, None]],
 ):
     mock_pool = CallbackTTLCache[str, Container](
         maxsize=10,
@@ -39,11 +38,11 @@ async def test_persistent_container_lifecycle(
 
     with patch("src.container.manager._active_assigned_pool", mock_pool):
         # Step 1. start the server (done by the fixture)
-        async for _ in server_factory():
+        async for server in server_factory():
             await _assert_container_pools(mock_pool)
 
             # Step 2. make a request from a github user
-            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            user = await _make_mcp_request(server.origin, settings.TEST_GITHUB_OAUTH_TOKEN)
             container_1 = await _assert_container_pools(
                 mock_pool,
                 user=user,
@@ -65,7 +64,7 @@ async def test_persistent_container_lifecycle(
             assert container_1.hostname == container_2.hostname
 
             # Step 4. make another request from the same user
-            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            user = await _make_mcp_request(server.origin, settings.TEST_GITHUB_OAUTH_TOKEN)
             container_3 = await _assert_container_pools(
                 mock_pool,
                 user=user,
@@ -81,7 +80,7 @@ async def test_persistent_container_lifecycle(
 
 @pytest.mark.asyncio
 async def test_one_time_container_lifecycle(
-    server_factory: Callable[[], AsyncGenerator[Server, None]],
+    server_factory: Callable[[], AsyncGenerator[ServerWithOrigin, None]],
 ):
     mock_pool = CallbackTTLCache[str, Container](
         maxsize=10,
@@ -92,14 +91,14 @@ async def test_one_time_container_lifecycle(
 
     with patch("src.container.manager._active_assigned_pool", mock_pool):
         # Step 1. start the server (done by the fixture)
-        async for _ in server_factory():
+        async for server in server_factory():
             await _assert_container_pools(mock_pool)
 
             # Step 2. make a request from a github user
             user_id = "test_user_id"
             app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
             token = f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}"
-            user = await _make_mcp_request(token)
+            user = await _make_mcp_request(server.origin, token)
 
             assert user.app_name == app_name
             container_1 = await _assert_container_pools(
@@ -116,7 +115,7 @@ async def test_one_time_container_lifecycle(
             )
 
             # Step 4. make another request from the same user
-            user = await _make_mcp_request(settings.TEST_GITHUB_OAUTH_TOKEN)
+            user = await _make_mcp_request(server.origin, settings.TEST_GITHUB_OAUTH_TOKEN)
             container_2 = await _assert_container_pools(
                 mock_pool, user=user, assigned_container_status="active"
             )
@@ -207,13 +206,9 @@ async def _assert_container_pools(
         return container
 
 
-async def _make_mcp_request(auth_token: str):
-    url = f"{settings.GATEWAY_ORIGIN}/mcp-media"
-    headers = {"Authorization": f"Bearer {auth_token}"}
-
-    async with streamablehttp_client(url, headers=headers) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("get_user_info")
+async def _make_mcp_request(server_origin: str, auth_token: str):
+    url = f"{server_origin}/mcp-media"
+    async with Client(url, auth=auth_token) as client:
+        result = await client.call_tool_mcp("get_user_info", {})
 
     return AuthUser.model_validate(result.structuredContent)

@@ -17,16 +17,15 @@ from src.auth.constants import (
     OAUTH_SCOPES,
 )
 from src.auth.getgather_oauth_token import GetgatherAuthTokenVerifier
-from src.auth.third_party_providers import get_available_providers, get_provider_scopes
+from src.auth.third_party_providers import ThirdPartyOAuth
+from src.http_utils import get_server_origin
 from src.settings import settings
 
 getgather_auth_provider = GetgatherAuthTokenVerifier()
 
-third_party_providers = get_available_providers()
 
-
-def auth_enabled() -> bool:
-    return bool(third_party_providers) or bool(settings.GETGATHER_APPS)
+def auth_enabled(server_origin: str) -> bool:
+    return ThirdPartyOAuth.has_providers(server_origin) or bool(settings.GETGATHER_APPS)
 
 
 class MultiOAuthTokenVerifier(TokenVerifier):
@@ -34,12 +33,18 @@ class MultiOAuthTokenVerifier(TokenVerifier):
         super().__init__(required_scopes=OAUTH_SCOPES)
 
     async def verify_token(self, token: str) -> AccessToken | None:
+        """
+        Choose the appropriate OAuth provider based on the token prefix.
+        For the same provider name (github or google), if there are multiple providers configured for
+        multiple domains, it's ok to use any of them for verification.
+        """
         if token.startswith(GETGATHER_OAUTH_PROVIDER_NAME) or token.startswith(
             GETGATHER_PERSISTENT_OAUTH_PROVIDER_NAME
         ):
             return await getgather_auth_provider.verify_token(token)
-        elif token.startswith("gho_") or token.startswith("ghp_"):
-            github_provider = third_party_providers.get("github")
+        elif token.startswith("gho_") or token.startswith("ghp_") or token.startswith("ghu_"):
+            # gho_ is for oauth apps, ghp_ is for personal access tokens, ghu_ is for github apps
+            github_provider = ThirdPartyOAuth.get_provider_for_name("github")
             if not github_provider:
                 raise ValueError("GitHub OAuth provider not configured")
 
@@ -47,7 +52,7 @@ class MultiOAuthTokenVerifier(TokenVerifier):
             if result:
                 result.claims["auth_provider"] = "github"
         else:
-            google_provider = third_party_providers.get("google")
+            google_provider = ThirdPartyOAuth.get_provider_for_name("google")
             if not google_provider:
                 raise ValueError("Google OAuth provider not configured")
 
@@ -69,6 +74,7 @@ class MultiOAuthProvider(OAuthProxy):
     def __init__(
         self,
         *,
+        base_url: str,
         allowed_client_redirect_uris: list[str] = [],
         client_storage: KVStorage | None = None,
     ):
@@ -79,11 +85,10 @@ class MultiOAuthProvider(OAuthProxy):
             upstream_client_id="",
             upstream_client_secret="",
             token_verifier=MultiOAuthTokenVerifier(),
-            base_url=settings.GATEWAY_ORIGIN,
-            issuer_url=settings.GATEWAY_ORIGIN,
+            base_url=base_url,
             allowed_client_redirect_uris=allowed_client_redirect_uris,
             client_storage=client_storage,
-            valid_scopes=get_provider_scopes(),
+            valid_scopes=ThirdPartyOAuth.get_scopes(),
         )
 
         self._auth_providers: dict[str, OAuthProxy] = {}  # client_id -> auth provider
@@ -95,7 +100,7 @@ class MultiOAuthProvider(OAuthProxy):
         return provider
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
-        client_info.scope = " ".join(get_provider_scopes())
+        client_info.scope = " ".join(ThirdPartyOAuth.get_scopes())
         return await super().register_client(client_info)
 
     async def authorize(
@@ -103,7 +108,7 @@ class MultiOAuthProvider(OAuthProxy):
         client: OAuthClientInformationFull,
         params: AuthorizationParams,
     ) -> str:
-        if not third_party_providers:
+        if not ThirdPartyOAuth.has_providers(get_server_origin()):
             raise ValueError("No third party OAuth providers configured")
 
         # strip scopes to use default scopes
@@ -111,7 +116,9 @@ class MultiOAuthProvider(OAuthProxy):
         params.scopes = []
 
         provider_urls: list[str] = []
-        for provider_name, provider in third_party_providers.items():
+        for provider_name, provider in ThirdPartyOAuth.get_providers_for_origin(
+            get_server_origin()
+        ).items():
             url = await provider.authorize(client, params)
             provider_urls.append(f"{provider_name}_url={quote(url)}")
 
@@ -126,7 +133,7 @@ class MultiOAuthProvider(OAuthProxy):
         provider = None
 
         # Check all providers for the transaction
-        for _provider in third_party_providers.values():
+        for _provider in ThirdPartyOAuth.get_providers_for_origin(get_server_origin()).values():
             if transaction := _provider._oauth_transactions.get(txn_id):
                 txn = transaction
                 provider = _provider
