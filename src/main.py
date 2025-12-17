@@ -84,8 +84,8 @@ def create_app():
             if data_format == "json":
                 return JSONResponse(content=result.model_dump(exclude_none=True, mode="json"))
 
-            def to_pacific_time(dt: datetime, format: str = "%Y/%m/%d %H:%M:%S") -> str:
-                return dt.astimezone(ZoneInfo("America/Los_Angeles")).strftime(format)
+            def to_pacific_time(dt: datetime | None, format: str = "%Y/%m/%d %H:%M:%S") -> str:
+                return dt.astimezone(ZoneInfo("America/Los_Angeles")).strftime(format) if dt else ""
 
             templates = Jinja2Templates(directory=FRONTEND_DIR)
             templates.env.filters["datetime"] = to_pacific_time  # type: ignore[reportUnknownMemberType]
