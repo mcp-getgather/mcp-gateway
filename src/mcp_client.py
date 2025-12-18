@@ -178,7 +178,7 @@ async def _auth_and_connect(
 
 async def _connect(server_url: str, oauth_auth: httpx.Auth, oauth_data: OAuthData):
     """Connect to the MCP server and get the user and container info."""
-    async with Client(server_url, auth=oauth_auth) as client:
+    async with Client(server_url, auth=oauth_auth, timeout=600) as client:
         logger.info(f"Connected to server", url=server_url)
 
         oauth_data.auth_completed = True
