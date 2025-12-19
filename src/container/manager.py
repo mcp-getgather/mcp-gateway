@@ -144,40 +144,43 @@ class ContainerManager:
         - if the container is checkpointed, restore it
         - otherwise, assign a new container to the user
         """
-        container = await ContainerService.get_container(user.user_id)
+        async with engine_client(network=CONTAINER_NETWORK_NAME, lock="write") as _client:
+            container = await ContainerService.get_container(user.user_id, client=_client)
 
-        if container:
-            if container.status == "running":
-                if container.hostname not in _active_assigned_pool:
+            if container:
+                if container.status == "running":
+                    if container.hostname not in _active_assigned_pool:
+                        logger.warning(
+                            f"Running container is not in the active pool, adding it",
+                            hostname=container.hostname,
+                            user=user.dump(),
+                        )
+                    if container.ip is None:
+                        logger.warning(
+                            f"Running container has no IP address, adding it",
+                            hostname=container.hostname,
+                            user=user.dump(),
+                        )
+                        container = await ContainerService.connect_network(
+                            container, client=_client
+                        )
+                elif container.checkpointed:
+                    # remove a random unassigned container to free up resource so the total number of running containers is maintained
+                    container_to_remove = await cls.get_unassigned_container(client=_client)
+                    await ContainerService.purge_container(container_to_remove, client=_client)
+                    container = await ContainerService.restore_container(container, client=_client)
+                else:
                     logger.warning(
-                        f"Running container is not in the active pool, adding it",
+                        f"Container is in an error state (not running or checkpointed)."
+                        " A new container will be assigned.",
                         hostname=container.hostname,
                         user=user.dump(),
                     )
-                if container.ip is None:
-                    logger.warning(
-                        f"Running container has no IP address, adding it",
-                        hostname=container.hostname,
-                        user=user.dump(),
-                    )
-                    container = await ContainerService.connect_network(container)
-            elif container.checkpointed:
-                # remove a random unassigned container to free up resource so the total number of running containers is maintained
-                container_to_remove = await cls.get_unassigned_container()
-                await ContainerService.purge_container(container_to_remove)
-                container = await ContainerService.restore_container(container)
-            else:
-                logger.warning(
-                    f"Container is in an error state (not running or checkpointed)."
-                    " A new container will be assigned.",
-                    hostname=container.hostname,
-                    user=user.dump(),
-                )
-                await ContainerService.purge_container(container)
-                container = None
+                    await ContainerService.purge_container(container, client=_client)
+                    container = None
 
-        if not container:
-            container = await ContainerService.assign_container(user)
+            if not container:
+                container = await ContainerService.assign_container(user, client=_client)
 
         # add to or refresh active pool
         _active_assigned_pool[container.hostname] = container
@@ -192,8 +195,10 @@ class ContainerManager:
         return container
 
     @classmethod
-    async def get_unassigned_container(cls) -> Container:
-        return await ContainerService.get_random_unassigned_container()
+    async def get_unassigned_container(
+        cls, client: ContainerEngineClient | None = None
+    ) -> Container:
+        return await ContainerService.get_random_unassigned_container(client=client)
 
     @classmethod
     @log_decorator

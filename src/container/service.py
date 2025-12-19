@@ -185,7 +185,7 @@ class ContainerService:
             client=client, network=CONTAINER_NETWORK_NAME, lock="write"
         ) as _client:
             # rename the container to [AuthUser.user_id]-[HOSTNAME]
-            container = await cls.get_random_unassigned_container(client)
+            container = await cls.get_random_unassigned_container(_client)
             assigned_container_name = ContainerIdentity(
                 hostname=container.hostname, user=user
             ).container_name
