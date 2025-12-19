@@ -312,7 +312,7 @@ class ContainerService:
         # The gateway selects the appropriate proxy and writes it as "proxy-0".
 
         env = {
-            "ENVIRONMENT": settings.GATEWAY_ORIGIN,
+            "ENVIRONMENT": settings.ENVIRONMENT,
             "LOGFIRE_TOKEN": settings.LOGFIRE_TOKEN,
             "LOG_LEVEL": settings.LOG_LEVEL,
             "HOSTNAME": hostname,

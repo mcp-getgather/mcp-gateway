@@ -2,19 +2,20 @@ import asyncio
 
 import pytest
 from fastmcp import Client
-from uvicorn import Server
 
 from src.auth.auth import AuthUser
 from src.auth.constants import GETGATHER_OAUTH_PROVIDER_NAME
 from src.container.service import ContainerService
 from src.settings import settings
+from tests.conftest import ServerWithOrigin
 
 
 @pytest.mark.asyncio
-async def test_mcp_getgather_auth(server: Server):
+async def test_mcp_getgather_auth(server: ServerWithOrigin):
     user_id = "test_user_id"
     app_key, app_name = list(settings.GETGATHER_APPS.items())[0]
-    url = f"{settings.GATEWAY_ORIGIN}/mcp-media"
+    url = f"{server.origin}/mcp-media"
+    token = f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}"
 
     token = f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}"
     result = await _call_tool(url, "get_user_info", token)
@@ -26,22 +27,21 @@ async def test_mcp_getgather_auth(server: Server):
 
 
 @pytest.mark.asyncio
-async def test_mcp_github_auth(server: Server):
+async def test_mcp_github_auth(server: ServerWithOrigin):
     result = await _call_tool(
-        f"{settings.GATEWAY_ORIGIN}/mcp-media", "get_user_info", settings.TEST_GITHUB_OAUTH_TOKEN
+        f"{server.origin}/mcp-media", "get_user_info", settings.TEST_GITHUB_OAUTH_TOKEN
     )
-
     assert not result.is_error
     user = AuthUser.model_validate(result.structured_content)
     assert user.auth_provider == "github"
 
 
 @pytest.mark.asyncio
-async def test_npr(server: Server):
+async def test_npr(server: ServerWithOrigin):
     user_id = "test_user_id"
     app_key = list(settings.GETGATHER_APPS.keys())[0]
     result = await _call_tool(
-        f"{settings.GATEWAY_ORIGIN}/mcp-npr",
+        f"{server.origin}/mcp-npr",
         "npr_get_headlines",
         f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}",
     )
@@ -52,12 +52,12 @@ async def test_npr(server: Server):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_requests(server: Server):
+async def test_concurrent_requests(server: ServerWithOrigin):
     user_id = "test_user_id"
     app_key = list(settings.GETGATHER_APPS.keys())[0]
     calls = [
         _call_tool(
-            f"{settings.GATEWAY_ORIGIN}/mcp-media",
+            f"{server.origin}/mcp-media",
             "get_user_info",
             f"{GETGATHER_OAUTH_PROVIDER_NAME}_{app_key}_{user_id}",
         )

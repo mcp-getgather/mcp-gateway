@@ -2,13 +2,21 @@ from os import environ
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.auth.constants import OAuthProviderConfig
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 ENV_FILE = environ.get("ENV_FILE", PROJECT_DIR / ".env")
+
+
+class ServerConfig(BaseModel):
+    origin: str
+    port: int
+    oauth_providers: list[OAuthProviderConfig] = []
 
 
 class Settings(BaseSettings):
@@ -27,13 +35,9 @@ class Settings(BaseSettings):
 
     ADMIN_API_TOKEN: str = ""
     ADMIN_EMAIL_DOMAIN: str = ""
-    GATEWAY_ORIGIN: str = ""
     GATEWAY_SENTRY_DSN: str = ""
 
-    OAUTH_GITHUB_CLIENT_ID: str = ""
-    OAUTH_GITHUB_CLIENT_SECRET: str = ""
-    OAUTH_GOOGLE_CLIENT_ID: str = ""
-    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
+    SERVER_CONFIGS: list[ServerConfig] = []
 
     GETGATHER_APPS: dict[str, str] = dict()  # app key -> app name
 
@@ -56,7 +60,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_settings(self):
-        required = ["DATA_DIR", "GATEWAY_ORIGIN", "CONTAINER_PROJECT_NAME"]
+        required = ["DATA_DIR", "SERVER_CONFIGS", "CONTAINER_PROJECT_NAME"]
         for name in required:
             if not getattr(self, name):
                 raise ValueError(f"Missing required setting: {name}")
