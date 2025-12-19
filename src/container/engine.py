@@ -126,10 +126,16 @@ class ContainerEngineClient:
             raise Exception(f"Failed to inspect containers: {ids}")
         return infos
 
-    async def last_activity_at(self, id: str) -> datetime:
+    async def last_activity_at(self, id: str) -> datetime | None:
         """Get the last activity time of a container by checking the last log entry."""
         result = await self.run("logs", "--timestamps", "--tail", "1", id)
-        return datetime.fromisoformat(result.split(" ")[0])
+        try:
+            return datetime.fromisoformat(result.split(" ")[0])
+        except Exception as e:
+            logger.warning(
+                f"Failed to parse last activity time of container {id}: {result}", error=e
+            )
+            return None
 
     async def create_container(
         self,
