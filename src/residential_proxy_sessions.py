@@ -101,6 +101,9 @@ class ProxyConfig(BaseModel):
     password: str | None = None
     server: str | None = None
     masked_url: str | None = None
+    hierarchy_fields: list[str] | None = (
+        None  # e.g., ["postal_code", "city", "state"] or ["city+state", "city"]
+    )
 
     def model_post_init(self, __context: Any) -> None:
         # either simple url or instantiated url_template
@@ -290,8 +293,8 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
     Example JSON:
         {
             "proxy-0": {
-                "name": "oxylabs_direct",
-                "url": "pr.oxylabs.io:7777",
+                "name": "residential_proxy",
+                "url": "proxy.example.com:7777",
                 "username_template": "customer-{session_id}",
                 "password": "secret123"
             }
@@ -309,6 +312,7 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
                 username_template=proxy_data.get("username_template"),  # type: ignore[arg-type]
                 username=proxy_data.get("username"),  # type: ignore[arg-type]
                 password=proxy_data.get("password"),  # type: ignore[arg-type]
+                hierarchy_fields=proxy_data.get("hierarchy_fields"),  # type: ignore[arg-type]
             )
 
         logger.info(f"Parsed {len(proxies)} proxies from JSON config")
