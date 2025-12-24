@@ -39,14 +39,20 @@ def build_location_hierarchy(
         List of Location objects ordered from most to least specific
 
     Examples:
-        >>> # Individual fields (Oxylabs/IPRoyal style)
+        >>> # Simple hierarchical fallback (most common use case)
+        >>> loc = Location(country="us", state="california", city="los_angeles")
+        >>> hierarchy = build_location_hierarchy(loc, ["city", "state"])
+        >>> # Level 1: Location(country="us", state="california", city="los_angeles")
+        >>> # Level 2: Location(country="us", state="california")  # city removed
+        >>> # Level 3: Location(country="us")  # state removed
+
+        >>> # With postal code
         >>> loc = Location(country="us", state="california", city="los_angeles", postal_code="90001")
         >>> hierarchy = build_location_hierarchy(loc, ["postal_code", "city", "state"])
-        >>> # Returns: [postal_code+country, city+country, state+country, country]
-
-        >>> # Combined fields (Decodo style)
-        >>> hierarchy = build_location_hierarchy(loc, ["city+state", "city", "state"])
-        >>> # Returns: [city+state+country, city+country, state+country, country]
+        >>> # Level 1: all fields (postal_code + city + state + country)
+        >>> # Level 2: city + state + country (postal_code removed)
+        >>> # Level 3: state + country (city removed)
+        >>> # Level 4: country only (state removed)
     """
     if not location or not location.country:
         logger.warning("Cannot build hierarchy: no country provided")

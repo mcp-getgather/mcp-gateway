@@ -168,28 +168,24 @@ def _create_client_factory(path: str):
                 )
 
                 # Validate with hierarchical fallback
-                (
-                    validated_config,
-                    validated_ip,
-                    validated_location,
-                ) = await select_and_validate_proxy(
+                result = await select_and_validate_proxy(
                     selected_proxy,
                     container.hostname,
                     location,
                     selected_proxy.hierarchy_fields,
                 )
 
-                if validated_config and validated_ip:
+                if result.proxy_config and result.validated_ip:
                     logger.info(
                         "✓ Proxy validation succeeded",
                         proxy_number=target_number,
-                        validated_ip=validated_ip,
-                        validated_location=validated_location.model_dump(exclude_none=True)
-                        if validated_location
+                        validated_ip=str(result.validated_ip),
+                        validated_location=result.validated_location.model_dump(exclude_none=True)
+                        if result.validated_location
                         else None,
                     )
                     # Write validated proxy config to container mount
-                    await _write_proxy_config_to_container(container.hostname, validated_config)
+                    await _write_proxy_config_to_container(container.hostname, result.proxy_config)
                 else:
                     logger.error(
                         "✗ Proxy validation failed for all hierarchy levels",

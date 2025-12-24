@@ -5,17 +5,31 @@ if they can successfully fetch an external IP address.
 """
 
 import asyncio
-import re
 from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
+from pydantic import BaseModel, IPvAnyAddress
 
 logger = logger.bind(topic="proxy_validation")
 
 IP_CHECK_URL = "http://checkip.amazonaws.com"
 MAX_IP_CHECK_RETRIES = 3  # Per location
 VALIDATION_TIMEOUT = 10  # seconds
+
+
+class ValidationResult(BaseModel):
+    """Result of proxy IP validation.
+
+    Attributes:
+        success: Whether validation succeeded
+        ip_address: The validated IP address (None if validation failed)
+        error: Error message if validation failed (None if succeeded)
+    """
+
+    success: bool
+    ip_address: IPvAnyAddress | None = None
+    error: str | None = None
 
 
 def mask_credentials(url: str) -> str:
@@ -46,9 +60,10 @@ def mask_credentials(url: str) -> str:
 
 async def validate_proxy_ip(
     proxy_url: str,
+    *,
     username: str | None = None,
     password: str | None = None,
-) -> tuple[bool, str | None]:
+) -> ValidationResult:
     """Validate proxy by fetching external IP.
 
     Makes a request through the proxy to checkip.amazonaws.com to verify:
@@ -59,16 +74,18 @@ async def validate_proxy_ip(
 
     Args:
         proxy_url: Proxy server URL (e.g., "http://proxy.example.com:8889")
-        username: Optional proxy username (if not in URL)
-        password: Optional proxy password (if not in URL)
+        username: Optional proxy username (if not in URL) - keyword-only
+        password: Optional proxy password (if not in URL) - keyword-only
 
     Returns:
-        (success: bool, ip_address: Optional[str])
+        ValidationResult with success status, IP address, and optional error message
 
     Example:
-        >>> success, ip = await validate_proxy_ip("http://proxy.com:8889", "user", "pass")
-        >>> if success:
-        ...     print(f"Proxy works! External IP: {ip}")
+        >>> result = await validate_proxy_ip("http://proxy.com:8889", username="user", password="pass")
+        >>> if result.success:
+        ...     print(f"Proxy works! External IP: {result.ip_address}")
+        ... else:
+        ...     print(f"Validation failed: {result.error}")
     """
     auth = None
     if username and password:
@@ -90,21 +107,24 @@ async def validate_proxy_ip(
                 response = await client.get(IP_CHECK_URL)
                 response.raise_for_status()
 
-                ip = response.text.strip()
+                ip_str = response.text.strip()
 
-                # Validate it's actually an IP address (IPv4 or IPv6)
-                if re.match(r"^(\d{1,3}\.){3}\d{1,3}$", ip) or ":" in ip:
+                # Validate it's actually an IP address using Pydantic
+                try:
+                    # Use Pydantic's validation by creating a temporary model
+                    result = ValidationResult(success=True, ip_address=ip_str)  # type: ignore[arg-type]
                     logger.info(
                         f"✓ Proxy validation succeeded",
                         attempt=attempt,
-                        ip=ip,
+                        ip=str(result.ip_address),
                         proxy_url=mask_credentials(proxy_url),
                     )
-                    return True, ip
-                else:
+                    return result
+                except ValueError as e:
                     logger.warning(
                         f"Invalid IP format received",
-                        ip=ip,
+                        ip=ip_str,
+                        error=str(e),
                         proxy_url=mask_credentials(proxy_url),
                     )
 
@@ -143,8 +163,9 @@ async def validate_proxy_ip(
         if attempt < MAX_IP_CHECK_RETRIES:
             await asyncio.sleep(0.5)
 
+    error_msg = f"Proxy validation failed after {MAX_IP_CHECK_RETRIES} attempts"
     logger.error(
-        f"✗ Proxy validation failed after {MAX_IP_CHECK_RETRIES} attempts",
+        f"✗ {error_msg}",
         proxy_url=mask_credentials(proxy_url),
     )
-    return False, None
+    return ValidationResult(success=False, error=error_msg)

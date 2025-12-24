@@ -293,8 +293,8 @@ def parse_proxies_toml(toml_str: str) -> dict[str, ProxyConfig]:
     Example JSON:
         {
             "proxy-0": {
-                "name": "oxylabs_direct",
-                "url": "pr.oxylabs.io:7777",
+                "name": "residential_proxy",
+                "url": "proxy.example.com:7777",
                 "username_template": "customer-{session_id}",
                 "password": "secret123"
             }

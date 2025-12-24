@@ -5,6 +5,7 @@ to select a working proxy configuration through intelligent fallback.
 """
 
 from loguru import logger
+from pydantic import BaseModel, IPvAnyAddress
 
 from src.proxy.location_hierarchy import build_location_hierarchy, describe_location
 from src.proxy.validation import validate_proxy_ip
@@ -19,12 +20,26 @@ from src.residential_proxy_sessions import (
 logger = logger.bind(topic="proxy_selector")
 
 
+class ProxyValidationResult(BaseModel):
+    """Result of proxy selection and validation with hierarchical fallback.
+
+    Attributes:
+        proxy_config: Validated proxy configuration (None if all levels failed)
+        validated_ip: External IP address obtained through proxy (None if validation failed)
+        validated_location: Location level that succeeded (None if validation failed)
+    """
+
+    proxy_config: GetgatherProxies | None = None
+    validated_ip: IPvAnyAddress | None = None
+    validated_location: Location | None = None
+
+
 async def select_and_validate_proxy(
     proxy_config: ProxyConfig,
     profile_id: str,
     location: Location | None,
     hierarchy_fields: list[str] | None = None,
-) -> tuple[GetgatherProxies | None, str | None, Location | None]:
+) -> ProxyValidationResult:
     """Select proxy and validate with hierarchical location fallback.
 
     Tries to build and validate proxy configurations using a hierarchy of
@@ -37,10 +52,10 @@ async def select_and_validate_proxy(
         hierarchy_fields: Optional list of fields for hierarchy (from TOML config)
 
     Returns:
-        Tuple of:
-        - proxy_config: GetgatherProxies | None (validated config or None if all failed)
-        - validated_ip: str | None (external IP if validation succeeded)
-        - validated_location: Location | None (location level that succeeded)
+        ProxyValidationResult containing:
+        - proxy_config: Validated proxy configuration (None if all levels failed)
+        - validated_ip: External IP address (None if validation failed)
+        - validated_location: Location level that succeeded (None if validation failed)
 
     Example:
         >>> config = ProxyConfig(
@@ -50,14 +65,16 @@ async def select_and_validate_proxy(
         ...     password="secret"
         ... )
         >>> location = Location(country="us", state="california", city="los_angeles")
-        >>> result, ip, loc = await select_and_validate_proxy(
+        >>> result = await select_and_validate_proxy(
         ...     config, "abc123", location, ["city", "state"]
         ... )
+        >>> if result.success:
+        ...     print(f"Validated IP: {result.validated_ip}")
     """
     # Handle 'none' proxy type
     if proxy_config.proxy_name == "none":
         logger.info("Proxy type is 'none', skipping proxy")
-        return None, None, None
+        return ProxyValidationResult()
 
     # If no location, try without location
     if not location:
@@ -65,31 +82,35 @@ async def select_and_validate_proxy(
         resolved = build_proxy_config(proxy_config, profile_id, None)
         if not resolved:
             logger.warning("Failed to build proxy config without location")
-            return None, None, None
+            return ProxyValidationResult()
 
-        success, ip = await validate_proxy_ip(
+        validation_result = await validate_proxy_ip(
             resolved.server or "",
-            resolved.username,
-            resolved.password,
+            username=resolved.username,
+            password=resolved.password,
         )
 
-        if success:
+        if validation_result.success:
             logger.info(
                 "✓ Proxy validated without location",
-                ip=ip,
+                ip=str(validation_result.ip_address),
                 proxy_name=proxy_config.proxy_name,
             )
-            return _to_getgather_proxies(resolved, proxy_config.proxy_name), ip, None
+            return ProxyValidationResult(
+                proxy_config=_to_getgather_proxies(resolved, proxy_config.proxy_name),
+                validated_ip=validation_result.ip_address,
+                validated_location=None,
+            )
         else:
-            logger.error("✗ Proxy validation failed (no location)")
-            return None, None, None
+            logger.error("✗ Proxy validation failed (no location)", error=validation_result.error)
+            return ProxyValidationResult()
 
     # Build location hierarchy
     hierarchy = build_location_hierarchy(location, hierarchy_fields)
 
     if not hierarchy:
         logger.warning("Failed to build location hierarchy", location=location.model_dump())
-        return None, None, None
+        return ProxyValidationResult()
 
     logger.info(
         f"Trying {len(hierarchy)} location levels for proxy validation",
@@ -116,25 +137,30 @@ async def select_and_validate_proxy(
             continue
 
         # Validate IP
-        success, ip = await validate_proxy_ip(
+        validation_result = await validate_proxy_ip(
             resolved.server or "",
-            resolved.username,
-            resolved.password,
+            username=resolved.username,
+            password=resolved.password,
         )
 
-        if success:
+        if validation_result.success:
             logger.info(
                 f"✓ Proxy validated at level {level}/{len(hierarchy)}",
                 location=describe_location(loc),
-                ip=ip,
+                ip=str(validation_result.ip_address),
                 proxy_name=proxy_config.proxy_name,
                 validated_location=loc.model_dump(exclude_none=True),
             )
-            return _to_getgather_proxies(resolved, proxy_config.proxy_name), ip, loc
+            return ProxyValidationResult(
+                proxy_config=_to_getgather_proxies(resolved, proxy_config.proxy_name),
+                validated_ip=validation_result.ip_address,
+                validated_location=loc,
+            )
         else:
             logger.warning(
                 f"✗ Validation failed at level {level}/{len(hierarchy)}",
                 location=describe_location(loc),
+                error=validation_result.error,
             )
 
     # All levels exhausted
@@ -144,7 +170,7 @@ async def select_and_validate_proxy(
         levels_tried=len(hierarchy),
         original_location=describe_location(location),
     )
-    return None, None, None
+    return ProxyValidationResult()
 
 
 def _to_getgather_proxies(resolved: ProxyConfig, proxy_name: str) -> GetgatherProxies:
